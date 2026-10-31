@@ -1,0 +1,3 @@
+# The corpus is fetched from source by download.py; keep it out of source-control
+files/
+analysis.json

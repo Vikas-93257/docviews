@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "docviews"
+version = "0.3.0a1"
+authors = [{ name = "Vikas Maurya" }]
+description = "Read .docx in original, accepted, and markup views; author common content with zero runtime dependencies."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["docx", "ooxml", "word", "tracked-changes", "revisions", "footnotes", "comments", "python-docx"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
+  "Topic :: Office/Business :: Office Suites",
+  "Topic :: Text Processing :: Markup :: XML",
+]
+dependencies = []
+
+[project.optional-dependencies]
+compare = ["python-docx>=1.2.0", "mammoth", "docx2python"]
+dev = ["pytest", "python-docx>=1.2.0"]
+
+[project.scripts]
+docviews = "docviews.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/Vikas-93257/docviews"
+Repository = "https://github.com/Vikas-93257/docviews"
+Issues = "https://github.com/Vikas-93257/docviews/issues"
+Documentation = "https://github.com/Vikas-93257/docviews/blob/main/README.md"
+Changelog = "https://github.com/Vikas-93257/docviews/blob/main/CHANGELOG.md"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]
+markers = ["corpus: regression tests that need the census corpus"]
+addopts = "-q"

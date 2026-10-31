@@ -1,0 +1,103 @@
+"""Tiny image fixtures, base64-embedded so the suite needs no image library.
+
+Regenerate with::
+
+    python3 tools/make_image_blobs.py
+"""
+
+import base64
+
+
+PNG_96 = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAHgAAAA8CAIAAAAiz+n/AAAACXBIWXMAAA7EAAAOxAGV"
+    "Kw4bAAAAoUlEQVR4nO3QQRHAIADAMEAI/qUgCxUrjyUKep1n78H31uuAvzA6YnTE6IjR"
+    "EaMjRkeMjhgdMTpidMToiNERoyNGR4yOGB0xOmJ0xOiI0RGjI0ZHjI4YHTE6YnTE6IjR"
+    "EaMjRkeMjhgdMTpidMToiNERoyNGR4yOGB0xOmJ0xOiI0RGjI0ZHjI4YHTE6YnTE6IjR"
+    "EaMjRkeMjhgdMTpidOQCHHQBfJRWPLoAAAAASUVORK5CYII="
+)
+
+PNG_RAW = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAHgAAAA8CAIAAAAiz+n/AAAAoUlEQVR4nO3QQRHAIADA"
+    "MEAI/qUgCxUrjyUKep1n78H31uuAvzA6YnTE6IjREaMjRkeMjhgdMTpidMToiNERoyNG"
+    "R4yOGB0xOmJ0xOiI0RGjI0ZHjI4YHTE6YnTE6IjREaMjRkeMjhgdMTpidMToiNERoyNG"
+    "R4yOGB0xOmJ0xOiI0RGjI0ZHjI4YHTE6YnTE6IjREaMjRkeMjhgdMTpidOQCHHQBfJRW"
+    "PLoAAAAASUVORK5CYII="
+)
+
+JPG_300 = base64.b64decode(
+    "/9j/4AAQSkZJRgABAQEBLAEsAAD/2wBDAA0JCgsKCA0LCgsODg0PEyAVExISEyccHhcg"
+    "LikxMC4pLSwzOko+MzZGNywtQFdBRkxOUlNSMj5aYVpQYEpRUk//2wBDAQ4ODhMREyYV"
+    "FSZPNS01T09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09PT09P"
+    "T09PT0//wAARCABkAMgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQF"
+    "BgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEI"
+    "I0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNk"
+    "ZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLD"
+    "xMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEB"
+    "AQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJB"
+    "UQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZH"
+    "SElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaan"
+    "qKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oA"
+    "DAMBAAIRAxEAPwDCooorzj7EKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAo"
+    "oooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooA"
+    "KKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKK"
+    "ACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACii"
+    "igAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAo"
+    "oooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooA"
+    "KKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKK"
+    "ACiiigAooooAKKKKACiiigAooooA/9k="
+)
+
+GIF = base64.b64decode(
+    "R0lGODdhAwACAIEAAMgeHgAAAAAAAAAAACwAAAAAAwACAAAIBgABCBwYEAA7"
+)
+
+BMP = base64.b64decode(
+    "Qk1+AAAAAAAAADYAAAAoAAAABAAAAAYAAAABABgAAAAAAEgAAADEDgAAxA4AAAAAAAAA"
+    "AAAAHh7IHh7IHh7IHh7IHh7IHh7IHh7IHh7IHh7IHh7IHh7IHh7IHh7IHh7IHh7IHh7I"
+    "Hh7IHh7IHh7IHh7IHh7IHh7IHh7IHh7I"
+)
+
+TIFF_300 = base64.b64decode(
+    "SUkqAAgAAAANAAABBAABAAAABQAAAAEBBAABAAAABwAAAAIBAwADAAAAqgAAAAMBAwAB"
+    "AAAAAQAAAAYBAwABAAAAAgAAABEBBAABAAAAwAAAABUBAwABAAAAAwAAABYBBAABAAAA"
+    "BwAAABcBBAABAAAAaQAAABoBBQABAAAAsAAAABsBBQABAAAAuAAAABwBAwABAAAAAQAA"
+    "ACgBAwABAAAAAgAAAAAAAAAIAAgACAAsAQAAAQAAACwBAAABAAAAyB4eyB4eyB4eyB4e"
+    "yB4eyB4eyB4eyB4eyB4eyB4eyB4eyB4eyB4eyB4eyB4eyB4eyB4eyB4eyB4eyB4eyB4e"
+    "yB4eyB4eyB4eyB4eyB4eyB4eyB4eyB4eyB4eyB4eyB4eyB4eyB4eyB4e"
+)
+
+SVG = base64.b64decode(
+    "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMCIg"
+    "aGVpZ2h0PSIxMCIvPg=="
+)
+
+JUNK = base64.b64decode(
+    "bm90IGFuIGltYWdlIGF0IGFsbA=="
+)
+
+class _Named:
+    def __init__(self, name, data):
+        self.name, self._data = name, data
+
+    def read(self):
+        return self._data
+
+    def seek(self, offset, whence=0):
+        return 0
+
+
+def file_like(name: str, data: bytes):
+    """A file object with a ``.name``, like the ones callers pass in."""
+    return _Named(name, data)
+
+
+BLOBS = {
+    "PNG_96": PNG_96,
+    "PNG_RAW": PNG_RAW,
+    "JPG_300": JPG_300,
+    "GIF": GIF,
+    "BMP": BMP,
+    "TIFF_300": TIFF_300,
+    "SVG": SVG,
+    "JUNK": JUNK,
+}

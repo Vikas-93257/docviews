@@ -1,0 +1,59 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install test dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Run tests
+        run: python -m pytest -o addopts='' -q
+
+  package-check:
+    name: Build, validate, and smoke-test distributions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.15"
+          cache: pip
+      - name: Install packaging tools
+        run: python -m pip install --upgrade build twine
+      - name: Build wheel and source distribution
+        run: python -m build
+      - name: Validate distribution metadata and README
+        run: python -m twine check --strict dist/*
+      - name: Install and smoke-test the built wheel
+        run: |
+          python -m pip install --no-deps --target "$RUNNER_TEMP/docviews-wheel" dist/*.whl
+          PYTHONPATH="$RUNNER_TEMP/docviews-wheel" python - <<'PY'
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+          from docviews import Document, open_docx
+
+          with TemporaryDirectory() as directory:
+              path = Path(directory) / "smoke.docx"
+              document = Document.new()
+              document.add_paragraph("package smoke test")
+              document.save(path)
+              assert open_docx(path).text() == "package smoke test"
+          PY
+          PYTHONPATH="$RUNNER_TEMP/docviews-wheel" "$RUNNER_TEMP/docviews-wheel/bin/docviews" --help

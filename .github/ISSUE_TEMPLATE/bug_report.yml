@@ -1,0 +1,52 @@
+name: Bug report
+description: Report a reproducible defect in docviews.
+title: ""
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not upload confidential documents. A minimal synthetic DOCX or
+        sanitized fixture is preferred.
+  - type: input
+    id: version
+    attributes:
+      label: docviews version or commit
+      placeholder: 0.3.0a1 alpha candidate
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Python version and operating system
+    validations:
+      required: true
+  - type: input
+    id: python-docx
+    attributes:
+      label: python-docx version, if relevant
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Minimal reproduction
+      description: Include a small script and a synthetic or sanitized DOCX.
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error, warning, or relevant package details
+      render: text

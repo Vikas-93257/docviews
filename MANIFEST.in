@@ -1,0 +1,18 @@
+include README.md
+include LICENSE
+include CHANGELOG.md
+include CENSUS.md
+include COMPAT.md
+include COMPARE.md
+include MIGRATION.md
+include CONTRIBUTING.md
+include tools/bench_compat_write.py
+include real_world_eval/README.md
+include real_world_eval/REPORT.md
+include real_world_eval/manifest.csv
+include real_world_eval/manifest.json
+include real_world_eval/download.py
+include real_world_eval/analyze.py
+
+# Regression tests require the separately maintained fixture corpus.
+prune tests

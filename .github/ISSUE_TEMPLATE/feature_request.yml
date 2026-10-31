@@ -1,0 +1,28 @@
+name: Feature request
+description: Propose a capability or compatibility improvement.
+title: ""
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please describe the workflow and the document structures involved.
+        Do not attach confidential source documents.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What are you trying to do, and what is blocking you?
+    validations:
+      required: true
+  - type: textarea
+    id: approach
+    attributes:
+      label: Proposed behavior
+      description: Include a small code example if you can.
+      render: python
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility or format constraints
+      description: Mention python-docx behavior, Word/OOXML details, or required output.

@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+coverage/
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+
+# Both datasets stay local until their source terms have been audited for a
+# public Git repository. The sdist intentionally excludes them as well.
+corpus/
+real_world_eval/files/
