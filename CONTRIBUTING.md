@@ -15,8 +15,10 @@ python -m pytest -o addopts='' -q
 
 The interoperability baseline is python-docx 1.2.0. The runtime package has
 no third-party dependencies; python-docx is used only by development tests.
-The full suite passed on Python 3.9–3.15 locally; the hosted matrix will run
-once the source and workflow are pushed to the public repository.
+The full suite passed locally on Python 3.9–3.15. The first hosted run on the
+public repository passed all seven Python jobs and package validation. A
+follow-up workflow update to remove action-runtime and runner-image notices is
+prepared; run CI again after pushing that update.
 
 ## Build and validate distributions
 
@@ -70,7 +72,7 @@ or the changelog when scope, evidence, or known limitations change.
 
 The public repository is [Vikas-93257/docviews](https://github.com/Vikas-93257/docviews),
 and its [issue tracker](https://github.com/Vikas-93257/docviews/issues) is the
-public channel for non-sensitive reports. The repository was empty when checked
-on 2026-10-31; the source and CI workflow still need to be pushed before hosted
-checks can run. There is no support SLA. Do not post private documents or
-security details in public issues.
+public channel for non-sensitive reports. The source is now on `main`; the first
+hosted run passed, and a follow-up workflow cleanup is pending a push and rerun.
+There is no support SLA. Do not post private documents or security details in
+public issues.
