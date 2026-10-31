@@ -93,12 +93,11 @@ support.
 At the 2026-10-31 release-readiness check, the selected Alpha candidate is
 version `0.3.0a1`; no PyPI release has been made. The public GitHub repository
 is [Vikas-93257/docviews](https://github.com/Vikas-93257/docviews), and source
-is now pushed to `main`. The [issue tracker](https://github.com/Vikas-93257/docviews/issues)
-is open. The first hosted Actions run for commit `f951022` passed all seven
-Python jobs and the package-validation job. It emitted non-blocking Node.js 20
-and `ubuntu-latest` migration notices; the local workflow now uses Node 24
-action releases and pins `ubuntu-24.04`, pending a hosted rerun. The full suite
-passed **149 tests on each Python version from 3.9 through 3.15** in the local
-matrix; after selecting `0.3.0a1`, it was rerun on Python 3.9 and 3.15. The full
-documented-API behavior matrix remains unfinished, and there is no production
-SLA or support commitment.
+is on `main`. The [issue tracker](https://github.com/Vikas-93257/docviews/issues)
+is open. Hosted Actions run #1 passed all seven Python jobs and the
+package-validation job; run #2 passed after updating to Node 24-compatible
+actions and pinning Ubuntu 24.04. The full suite passed **149 tests on each
+Python version from 3.9 through 3.15** in the local matrix; after selecting
+`0.3.0a1`, it was rerun on Python 3.9 and 3.15. The full documented-API
+behavior matrix remains unfinished, and there is no production SLA or support
+commitment.

@@ -256,7 +256,7 @@ you that can normalise, reorder or rename something.
 | first release | 2013 | 2026 (v0.1) |
 | latest | 1.2.0, 2025-06-16 | 0.3.0a1 Alpha candidate; unpublished at the 2026-10-31 snapshot |
 | use in the wild | 95.4M downloads/month | no public user base recorded at that snapshot |
-| documentation | book-length, plus a decade of Q&A | README, compatibility and migration guides, contributor guide, census, and comparison; source is now public, with its first hosted CI run passing |
+| documentation | book-length, plus a decade of Q&A | README, compatibility and migration guides, contributor guide, census, and comparison; source is public, and two hosted CI runs passed |
 | test suite here | — | 149 tests, corpus-backed |
 | upstream activity | dormant since 2025-06; tracked-changes PRs #1534/#1538 open since Jan 2026, review stalled | active |
 
@@ -313,7 +313,7 @@ under the table.
 | authoring breadth | **9** | 8 | both author paragraphs→styles→tables→sections→images; python-docx still has more mature edge-case coverage and a larger regression history |
 | speed | 8 | **9** | 2026-10-31 build+save microbenchmark: docviews 0.031 vs 0.142 s (500 paragraphs) and 0.438 vs 0.571 s (5,000), with python-docx faster at saving alone |
 | dependencies / footprint | 6 | **10** | lxml + typing_extensions + 12 MB vs none; 252,987 B vs about 115.3 KiB per wheel |
-| maturity / ecosystem | **10** | 3 | 95.4M downloads/month since 2013 vs an unpublished 0.3.0a1 Alpha candidate; the public repo and issue tracker are new, first CI passed, and no adoption data is recorded at the 2026-10-31 recheck |
+| maturity / ecosystem | **10** | 3 | 95.4M downloads/month since 2013 vs an unpublished 0.3.0a1 Alpha candidate; the public repo and issue tracker are new, two hosted CI runs passed, and no adoption data is recorded at the 2026-10-31 recheck |
 | documentation / support | **9** | 6 | python-docx has a book-length manual and established Q&A; docviews has migration/contributor guides and measured compatibility docs, but its public issue tracker is new and has no support history or SLA |
 | verification / tests | 6 | **9** | 149 tests passed on each Python 3.9–3.15 (seven versions), plus an 8-file public-DOCX round-trip smoke set; no independent rendered-text gold set |
 | openness (Strict, plain XML, streaming) | 6 | **9** | ISO-Strict opens here and is refused there; no C XML layer; `iterparse` streaming |
