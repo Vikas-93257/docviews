@@ -13,9 +13,11 @@
 Nothing is faked: this is the same three-view reader underneath, so every
 paragraph also knows its ``original``/``markup`` text, every revision carries a
 ``scope``, and comments keep their anchor ranges. What this module adds is a
-practical compatibility layer for a tested subset of the documented
-python-docx API—not a complete import-compatible replacement. The attribute
-inventory in ``COMPAT.md`` is not proof of signature or behavioral parity.
+compatibility layer for python-docx 1.2.0's documented public API. It is not a
+top-level ``docx`` package alias and does not replace undocumented lxml/OOXML/OPC
+internals. The complete source-backed inventory and differential behavior
+evidence are in ``API_PARITY_MATRIX.md``; ``COMPAT.md`` is an additional bounded
+sample audit.
 
 Some deliberate differences from python-docx, because the alternative is a lie
 about the file:
@@ -31,26 +33,32 @@ from __future__ import annotations
 
 import copy
 import hashlib
-from collections.abc import Sequence
+from inspect import Parameter, Signature
+from collections.abc import Iterator, Sequence
 from pathlib import Path
-from typing import Iterable, List, Optional, Union
+from typing import IO, Iterable, List, Optional, Union
 from xml.etree import ElementTree as ET
 
 from ..authoring import LatentStyles as _LatentStyles
 from ..authoring import find_body_inline_shapes, find_part_rels
 from ..images import detect as _detect_image
 from ..document import Document as _Document
+from ..exceptions import InvalidSpanError, InvalidXmlError, PythonDocxError
 from ..ooxml import DocxError
+from . import exceptions
 from ..views import (Hyperlink as _Hyperlink, Paragraph,
                      Paragraph as _Paragraph, _attr, _tag, views_of)
-from ..write import (Builder, ColorFormat as _ColorFormat, Font as _Font,
+from ..write import (Builder, Cell as _CoreCell,
+                     ColorFormat as _ColorFormat, Font as _Font,
                      ParagraphFormat as _ParagraphFormat, Run,
                      Run as _Run, Table, Table as _Table)
-from .enum import WD_BREAK, WD_SECTION_START, WD_TAB_ALIGNMENT, WD_TAB_LEADER
+from .enum import (WD_BREAK, WD_SECTION, WD_SECTION_START, WD_STYLE_TYPE,
+                   WD_TAB_ALIGNMENT, WD_TAB_LEADER)
 from .shared import Cm, Emu, Inches, Length, Mm, Pt, RGBColor, Twips
 
 __all__ = [
-    "Document", "DocumentError", "Comment", "Comments", "Inches", "Cm", "Mm",
+    "Document", "DocumentError", "PythonDocxError", "InvalidSpanError",
+    "InvalidXmlError", "exceptions", "Comment", "Comments", "Inches", "Cm", "Mm",
     "Pt", "Emu", "Twips", "Length", "RGBColor", "Image", "Drawing",
     "RenderedPageBreak",
 ]
@@ -66,6 +74,24 @@ def _style_name(style) -> Optional[str]:
     return str(name) if name else str(style)
 
 
+def _style_id_for_type(document: "Document", style_or_name,
+                       style_type: WD_STYLE_TYPE) -> Optional[str]:
+    """Resolve a public style argument and enforce python-docx's type contract."""
+    if style_or_name is None:
+        return None
+    if isinstance(style_or_name, BaseStyle):
+        style = style_or_name
+    else:
+        style = document.styles[style_or_name]
+    if style.type != style_type:
+        raise ValueError(
+            "assigned style is type %s, need type %s" % (style.type, style_type))
+    default = document.styles.default(style_type)
+    if default is not None and style.style_id == default.style_id:
+        return None
+    return style.style_id
+
+
 def _align_value(align) -> Optional[str]:
     """Accept ``WD_ALIGN_PARAGRAPH.CENTER``, ``"center"`` or ``None``."""
     from ..write import token
@@ -77,6 +103,39 @@ def _enum_from_token(enum_name: str, value):
         return None
     from . import enum
     return getattr(enum, enum_name).from_xml(str(value))
+
+
+def _replace_compat_run_text(run: "_CompatRun", text: str) -> None:
+    """Write python-docx-style run text (tabs and line breaks as XML elements)."""
+    element = run._element
+    for child in list(element):
+        if _tag(child) != "rPr":
+            element.remove(child)
+
+    buffer: list[str] = []
+
+    def flush() -> None:
+        if not buffer:
+            return
+        value = "".join(buffer)
+        attrs = ({"{http://www.w3.org/XML/1998/namespace}space": "preserve"}
+                 if value != value.strip() else {})
+        text_element = ET.SubElement(element, f"{{{run._w_ns}}}t", attrs)
+        text_element.text = value
+        buffer.clear()
+
+    for char in text:
+        if char == "\t":
+            flush()
+            ET.SubElement(element, f"{{{run._w_ns}}}tab")
+        elif char in "\r\n":
+            flush()
+            ET.SubElement(element, f"{{{run._w_ns}}}br")
+        else:
+            buffer.append(char)
+    flush()
+    if run._refresh:
+        run._refresh()
 
 
 class DocumentError(Exception):
@@ -109,6 +168,10 @@ class _CompatColorFormat:
     @property
     def rgb(self):
         value = self._color_format.rgb
+        if value is None and self._color_format.theme_color is not None:
+            # python-docx exposes the schema default RGB value (black) when
+            # a theme color is present without an explicit w:val attribute.
+            value = (0, 0, 0)
         return RGBColor(*value) if value is not None else None
 
     @rgb.setter
@@ -129,15 +192,28 @@ class _CompatColorFormat:
 
 
 class _CompatFont(_Font):
-    """Font proxy whose nested color value matches python-docx's class."""
+    """Font proxy whose values match python-docx's enum and color objects."""
 
     @property
     def color(self):
         return _CompatColorFormat(_Font.color.fget(self))
 
-    @color.setter
-    def color(self, value):
-        _Font.color.fset(self, value)
+    @property
+    def highlight_color(self):
+        value = _Font.highlight_color.fget(self)
+        return _enum_from_token("WD_COLOR_INDEX", str(value)) \
+            if value is not None else None
+
+    @highlight_color.setter
+    def highlight_color(self, value):
+        _Font.highlight_color.fset(self, value)
+
+
+class _CompatText:
+    """Opaque ``_Text`` return proxy from python-docx's ``Run.add_text``."""
+
+    def __init__(self, element: ET.Element):
+        self._t = element
 
 
 class _CompatRun(_Run):
@@ -148,6 +224,14 @@ class _CompatRun(_Run):
                          document=document, part_name=run._part_name)
         self._compat_document = document
         self._compat_paragraph = paragraph
+
+    @property
+    def text(self) -> str:
+        return _Run.text.fget(self)
+
+    @text.setter
+    def text(self, value: str) -> None:
+        _replace_compat_run_text(self, value)
 
     @property
     def style(self):
@@ -161,23 +245,71 @@ class _CompatRun(_Run):
 
     @style.setter
     def style(self, value) -> None:
-        if isinstance(value, _ParagraphStyle):
-            value = value._style
-        _Run.style.fset(self, value)
+        style_id = _style_id_for_type(
+            self._compat_document, value, WD_STYLE_TYPE.CHARACTER)
+        _Run.style.fset(self, style_id)
 
     @property
     def font(self):
         return _CompatFont(self)
 
-    def add_break(self, break_type=WD_BREAK.LINE):
+    def add_break(self, break_type: WD_BREAK = WD_BREAK.LINE):
         return _Run.add_break(self, break_type)
+
+    def add_text(self, text: str):
+        if text is not None and not isinstance(text, (str, bytes, bytearray)):
+            raise TypeError(
+                "Argument must be bytes or unicode, got '%s'" % type(text).__name__)
+        if isinstance(text, (bytes, bytearray)):
+            try:
+                text = bytes(text).decode("utf-8")
+            except UnicodeDecodeError:
+                raise ValueError(
+                    "All strings must be XML compatible: Unicode or ASCII, "
+                    "no NULL bytes or control characters") from None
+        if isinstance(text, str) and any(
+                not (codepoint in (0x9, 0xA, 0xD)
+                     or 0x20 <= codepoint <= 0xD7FF
+                     or 0xE000 <= codepoint <= 0xFFFD
+                     or 0x10000 <= codepoint <= 0x10FFFF)
+                for codepoint in map(ord, text)):
+            raise ValueError(
+                "All strings must be XML compatible: Unicode or ASCII, "
+                "no NULL bytes or control characters")
+        element = ET.SubElement(self._element, f"{{{self._w_ns}}}t")
+        if text != text.strip():
+            element.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+        element.text = text
+        if self._refresh:
+            self._refresh()
+        return _CompatText(element)
+
+    def clear(self):
+        rpr = self._rpr()
+        for child in list(self._element):
+            if child is not rpr:
+                self._element.remove(child)
+        if self._refresh:
+            self._refresh()
+        return self
+
+    @property
+    def underline(self):
+        value = _Run.underline.fget(self)
+        if value is None or isinstance(value, bool):
+            return value
+        return _enum_from_token("WD_UNDERLINE", str(value))
+
+    @underline.setter
+    def underline(self, value):
+        _Run.underline.fset(self, value)
 
     @property
     def contains_page_break(self):
         return any(_tag(child) == "lastRenderedPageBreak"
                    for child in self._element)
 
-    def iter_inner_content(self):
+    def iter_inner_content(self) -> Iterator[str | Drawing | RenderedPageBreak]:
         """Yield text, drawings, and rendered breaks in run order."""
         text_parts = []
         text_tags = {"br", "cr", "noBreakHyphen", "ptab", "t", "tab"}
@@ -206,7 +338,9 @@ class _CompatRun(_Run):
         if text_parts:
             yield "".join(text_parts)
 
-    def add_picture(self, image_path_or_stream, width=None, height=None):
+    def add_picture(self, image_path_or_stream: str | IO[bytes],
+                    width: int | Length | None = None,
+                    height: int | Length | None = None) -> InlineShape:
         return self._compat_document._add_picture_to_run(
             image_path_or_stream, width, height, self)
 
@@ -231,7 +365,7 @@ class _CompatParagraph(_Paragraph):
         return [_CompatHyperlink(link, self)
                 for link in _Paragraph.hyperlinks.fget(self)]
 
-    def iter_inner_content(self):
+    def iter_inner_content(self) -> Iterator[Run | Hyperlink]:
         for item in _Paragraph.iter_inner_content(self):
             if isinstance(item, _Run):
                 yield _compat_run(item, self._compat_document, self)
@@ -241,18 +375,54 @@ class _CompatParagraph(_Paragraph):
                 yield item
 
     @property
+    def runs(self):
+        """Direct ``w:r`` children, matching ``Paragraph.runs`` in python-docx."""
+        element = self._require_element()
+        return [_compat_run(
+            _Run(child, self._w_ns, refresh=self.refresh,
+                 document=self._document, part_name=self.part_name),
+            self._compat_document, self)
+                for child in element if _tag(child) == "r"]
+
+    @property
     def contains_page_break(self):
-        return any(run.contains_page_break for run in self.runs)
+        return bool(self.rendered_page_breaks)
+
+    @property
+    def rendered_page_breaks(self):
+        """Rendered breaks in direct runs and hyperlink-contained runs."""
+        element = self._require_element()
+        run_elements = []
+        for child in element:
+            if _tag(child) == "r":
+                run_elements.append(child)
+            elif _tag(child) == "hyperlink":
+                run_elements.extend(run for run in child if _tag(run) == "r")
+        breaks = []
+        for element in run_elements:
+            run = _compat_run(
+                _Run(element, self._w_ns, refresh=self.refresh,
+                     document=self._document, part_name=self.part_name),
+                self._compat_document, self)
+            breaks.extend(item for item in run.iter_inner_content()
+                          if isinstance(item, RenderedPageBreak))
+        return breaks
 
     @property
     def text(self) -> str:
         if self._element is None:
             return self.__dict__.get("text", "")
-        return views_of(self._element).get(self.view) or ""
+        # python-docx reads the direct run and hyperlink children of w:p; text
+        # wrapped in revision elements is not part of Paragraph.text or .runs.
+        return "".join(
+            views_of(child).get(self.view) or ""
+            for child in self._element if _tag(child) in ("r", "hyperlink"))
 
     @text.setter
-    def text(self, value: str) -> None:
-        self.set_text(value or "")
+    def text(self, value: str | None) -> None:
+        # python-docx replaces the paragraph with one run, even for empty text.
+        self.clear()
+        self.add_run(value)
 
     @property
     def alignment(self):
@@ -267,9 +437,11 @@ class _CompatParagraph(_Paragraph):
     @property
     def style(self):
         value = _Paragraph.style.fget(self)
-        if value is None:
-            return None
         from .enum import WD_STYLE_TYPE
+        if value is None:
+            # python-docx resolves an absent pStyle through the document's
+            # default paragraph style; the core view leaves this implicit.
+            return self._compat_document.styles.default(WD_STYLE_TYPE.PARAGRAPH)
         try:
             return self._compat_document.styles.get_by_id(
                 value.style_id, WD_STYLE_TYPE.PARAGRAPH)
@@ -278,7 +450,9 @@ class _CompatParagraph(_Paragraph):
 
     @style.setter
     def style(self, value) -> None:
-        _Paragraph.style.fset(self, value)
+        style_id = _style_id_for_type(
+            self._compat_document, value, WD_STYLE_TYPE.PARAGRAPH)
+        _Paragraph.style.fset(self, style_id)
 
     @property
     def paragraph_format(self):
@@ -294,21 +468,33 @@ class _CompatParagraph(_Paragraph):
         self.revision_chars = dict(current.revision_chars)
         return self
 
-    def add_run(self, text=None, style=None) -> Run:
+    def add_run(self, text: str | None = None,
+                style: str | CharacterStyle | None = None) -> Run:
         """Add a run using python-docx's ``text`` and character ``style`` args."""
-        run = _Paragraph.add_run(self, "" if text is None else text)
+        run = _compat_run(_Paragraph.add_run(self, ""), self._compat_document, self)
+        run.text = text if text else ""
         if style is not None:
             run.style = style
-        return _compat_run(run, self._compat_document, self)
+        return run
+
+    def clear(self):
+        _Paragraph.clear(self)
+        return self
 
     def insert_after(self, text: str = "", **fmt):
         paragraph = _Paragraph.insert_after(self, text, **fmt)
         return _compat_paragraph(paragraph, self._compat_document)
 
-    def insert_paragraph_before(self, text=None, style=None):
-        paragraph = _Paragraph.insert_paragraph_before(
-            self, "" if text is None else text, style=style)
-        return _compat_paragraph(paragraph, self._compat_document)
+    def insert_paragraph_before(
+            self, text: str | None = None,
+            style: str | ParagraphStyle | None = None) -> Paragraph:
+        style_id = _style_id_for_type(
+            self._compat_document, style, WD_STYLE_TYPE.PARAGRAPH)
+        paragraph = _Paragraph.insert_paragraph_before(self, "", style=style_id)
+        paragraph = _compat_paragraph(paragraph, self._compat_document)
+        if text:
+            paragraph.add_run(text)
+        return paragraph
 
 
 class _CompatParagraphFormat(_ParagraphFormat):
@@ -326,7 +512,12 @@ class _CompatParagraphFormat(_ParagraphFormat):
 
     @property
     def line_spacing(self):
-        return _ParagraphFormat.line_spacing.fget(self)
+        line = self._get_child("spacing", "line")
+        if line is None:
+            return None
+        if self._get_child("spacing", "lineRule") == "auto":
+            return int(line) / 240
+        return Length(int(line) * 635)
 
     @line_spacing.setter
     def line_spacing(self, value) -> None:
@@ -563,10 +754,10 @@ class RenderedPageBreak:
 
     def _fragment(self, side):
         paragraph, run, hyperlink, parents = self._context()
-        if not self._is_first_in_paragraph(paragraph):
-            raise ValueError("only defined on first rendered page-break in paragraph")
         if self._at_paragraph_boundary(paragraph, run, hyperlink, side):
             return None
+        if not self._is_first_in_paragraph(paragraph):
+            raise ValueError("only defined on first rendered page-break in paragraph")
 
         # Work on a clone so fragment inspection never mutates the source file.
         original = paragraph._element
@@ -778,7 +969,7 @@ class _CompatTabStops:
             tabs.append(element)
         return _CompatTabStop(element, self._format)
 
-    def clear_all(self) -> None:
+    def clear_all(self):
         ppr = self._format._ppr()
         if ppr is not None:
             tabs = next((child for child in ppr if _tag(child) == "tabs"), None)
@@ -841,9 +1032,33 @@ class _CompatTabStop:
 class Document(_Document):
     """A python-docx-shaped document: create, open, edit, save."""
 
+    # python-docx exposes Document as a factory function returning
+    # DocumentObject. This class keeps the richer instance type while presenting
+    # the factory's documented call signature to introspection callers.
+    __signature__ = Signature((
+        Parameter("docx", Parameter.POSITIONAL_OR_KEYWORD,
+                  default=None, annotation="str | IO[bytes] | None"),
+    ), return_annotation="DocumentObject")
+
     def __init__(self, docx: Union[str, Path, bytes, None] = None):
         if docx is None:
             super().__init__(type(self)._new_bytes())
+            # ``python-docx.Document()`` starts from its shipped default.docx,
+            # whose CoreProperties part contains these values. Our native
+            # document writer intentionally starts lean, so seed the
+            # compatibility entry point to preserve the observable API state.
+            from datetime import datetime, timezone
+            props = self.core_properties
+            props.title = ""
+            props.author = "python-docx"
+            props.subject = ""
+            props.comments = "generated by python-docx"
+            props.category = ""
+            props.keywords = ""
+            props.last_modified_by = ""
+            props.revision = 1
+            props.created = datetime(2013, 12, 23, 23, 15, tzinfo=timezone.utc)
+            props.modified = datetime(2013, 12, 23, 23, 15, tzinfo=timezone.utc)
         else:
             try:
                 super().__init__(docx)
@@ -856,26 +1071,53 @@ class Document(_Document):
         return new_package_bytes()
 
     # ------------------------------------------------------------ python-docx API
-    def add_paragraph(self, text: str = "", style=None) -> Paragraph:
+    def add_paragraph(
+            self, text: str = "",
+            style: str | ParagraphStyle | None = None) -> Paragraph:
         """Add a paragraph with python-docx's text and style parameters."""
-        paragraph = super().add_paragraph(text, style=_style_name(style))
-        return _compat_paragraph(paragraph, self)
+        style_id = _style_id_for_type(self, style, WD_STYLE_TYPE.PARAGRAPH)
+        paragraph = _compat_paragraph(
+            super().add_paragraph("", style=style_id), self)
+        if text:
+            paragraph.add_run(text)
+        return paragraph
 
-    def add_heading(self, text: str = "", level: int = 1) -> Paragraph:
-        return _compat_paragraph(super().add_heading(text, level), self)
+    def add_heading(self, text: str = "", level: int = 1):
+        if not 0 <= level <= 9:
+            raise ValueError("level must be in range 0-9, got %d" % level)
+        style = "Title" if level == 0 else "Heading %d" % level
+        return self.add_paragraph(text, style=style)
 
-    def add_page_break(self) -> Paragraph:
-        return _compat_paragraph(super().add_page_break(), self)
+    def add_page_break(self):
+        paragraph = self.add_paragraph()
+        paragraph.add_run().add_break(WD_BREAK.PAGE)
+        return paragraph
 
-    def add_section(self, start_type=WD_SECTION_START.NEW_PAGE):
+    def add_section(self, start_type: WD_SECTION = WD_SECTION_START.NEW_PAGE):
         """Start a section using python-docx's default ``NEW_PAGE`` break."""
         section = super().add_section()
         section.start_type = start_type
         return _Section(self, section)
 
-    def add_table(self, rows: int, cols: int, style=None):
-        table = super().add_table(rows, cols, style=_style_name(style))
-        return _CompatTable(self, table)
+    def add_table(self, rows: int, cols: int,
+                  style: str | _TableStyle | None = None):
+        table = super().add_table(rows, cols, style=None)
+        wrapped_table = _CompatTable(self, table)
+        wrapped_table.style = style
+        # python-docx sizes new tables to the usable width of the last section;
+        # the core builder's standalone default grid is intentionally narrower.
+        section = self.sections[-1]
+        page_width = section.page_width or Inches(8.5)
+        left_margin = section.left_margin or Inches(1)
+        right_margin = section.right_margin or Inches(1)
+        column_width = Length(
+            (page_width - left_margin - right_margin) // cols)
+        for column in table.columns:
+            column.width = column_width
+        for row in table.rows:
+            for cell in row.cells:
+                cell.width = column_width
+        return wrapped_table
 
     @property
     def tables(self):
@@ -897,7 +1139,7 @@ class Document(_Document):
                 if para.part_name == self._package.main_part
                 and id(para._element) in direct]
 
-    def iter_inner_content(self):
+    def iter_inner_content(self) -> Iterator[Paragraph | Table]:
         """Yield body paragraphs and tables in document order, like python-docx."""
         paragraphs = {id(para._element): para for para in self.paragraphs}
         w_ns = self._package.ns["w"]
@@ -956,10 +1198,19 @@ class Document(_Document):
         builder = Builder(self._package.ns)
         lines = (text or "").split("\n")
         paragraphs = []
-        for line in lines:
-            paragraph = builder.paragraph(line, style="CommentText")
-            comment_element.append(paragraph)
-            paragraphs.append(paragraph)
+        for index, line in enumerate(lines):
+            paragraph_element = builder.paragraph("", style="CommentText")
+            comment_element.append(paragraph_element)
+            paragraph = _Paragraph(
+                text="", view="accepted", kind="comment", part_name=part_name,
+                index=index, _element=paragraph_element, _root=comment_element,
+                _w_ns=w_ns, _document=self)
+            paragraph = _compat_paragraph(paragraph, self)
+            # python-docx creates the first text run whenever non-empty comment
+            # text was supplied, even if its first newline-delimited segment is "".
+            if text != "" and (index == 0 or line):
+                paragraph.add_run(line)
+            paragraphs.append(paragraph_element)
 
         # The annotation reference belongs to the comment body even before a
         # body run is marked as the comment's anchor, matching python-docx.
@@ -967,7 +1218,10 @@ class Document(_Document):
         properties = builder.el("w:rPr", reference)
         builder.el("w:rStyle", properties, w_val="CommentReference")
         builder.el("w:annotationRef", reference)
-        paragraphs[0].append(reference)
+        first_paragraph_children = list(paragraphs[0])
+        reference_index = (1 if first_paragraph_children and
+                           _tag(first_paragraph_children[0]) == "pPr" else 0)
+        paragraphs[0].insert(reference_index, reference)
         self._mark_changed(part_name)
         return Comment(self, str(comment_id))
 
@@ -976,23 +1230,42 @@ class Document(_Document):
         """python-docx's collection API, with docviews' additional anchors."""
         return Comments(self)
 
-    def add_comment(self, runs, text: str = "", author: str = "",
-                    initials: str = "") -> "Comment":
+    def add_comment(self, runs: Run | Sequence[Run], text: str | None = "",
+                    author: str = "", initials: str | None = "") -> Comment:
         """Add a comment anchored to runs and return its python-docx-shaped proxy."""
-        comment = _Document.add_comment(self, runs, text=text, author=author,
-                                        initials=initials)
+        if isinstance(runs, _Run):
+            run_sequence = [runs]
+        else:
+            # Match python-docx's non-empty indexed Sequence contract (and its
+            # native IndexError/TypeError for an empty or non-indexable input).
+            runs[0]
+            run_sequence = list(runs)
+        if text is None:
+            # python-docx 1.2.0 creates the comment part entry before calling
+            # ``text.split``; None therefore raises after the comment exists,
+            # but before its run-range markers are written.
+            self.comments.add_comment(text="", author=author, initials=initials)
+            raise AttributeError("'NoneType' object has no attribute 'split'")
+        comment = _Document.add_comment(self, run_sequence, text=text,
+                                        author=author, initials=initials)
         return Comment(self, comment)
 
-    def add_picture(self, image_path_or_stream, width=None, height=None):
+    def add_picture(self, image_path_or_stream: str | IO[bytes],
+                    width: int | Length | None = None,
+                    height: int | Length | None = None):
         """Add an inline picture to the document body."""
+        if hasattr(image_path_or_stream, "seek"):
+            image_path_or_stream.seek(0)
         return _InlineShape(super().add_picture(
             image_path_or_stream, width, height), self)
 
     def _add_picture_to_run(self, image_path_or_stream, width, height, run):
+        if hasattr(image_path_or_stream, "seek"):
+            image_path_or_stream.seek(0)
         return _InlineShape(super().add_picture(
             image_path_or_stream, width, height, run=run), self)
 
-    def save(self, path_or_stream) -> None:
+    def save(self, path_or_stream: str | IO[bytes]):
         """Save to a path or writable stream, returning python-docx's ``None``."""
         if path_or_stream is not None and hasattr(path_or_stream, "write"):
             data = self.to_bytes()
@@ -1023,11 +1296,14 @@ class Comments:
         return list(self)[index]
 
     def add_comment(self, text: str = "", author: str = "",
-                    initials: Optional[str] = "") -> "Comment":
+                    initials: str | None = "") -> Comment:
         """Add an unanchored comment, which can later be marked on a run."""
+        if text is None:
+            self._document._add_unanchored_comment("", author, initials)
+            raise AttributeError("'NoneType' object has no attribute 'split'")
         return self._document._add_unanchored_comment(text, author, initials)
 
-    def get(self, comment_id: int) -> Optional["Comment"]:
+    def get(self, comment_id: int) -> Comment | None:
         wanted = str(comment_id)
         for comment in self:
             if str(comment.comment_id) == wanted:
@@ -1097,12 +1373,11 @@ class Comment:
         value = element.get(self._document._w("date"))
         if not value:
             return None
-        from datetime import datetime, timezone
+        from datetime import datetime
         try:
-            result = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError:
             return None
-        return result if result.tzinfo is not None else result.replace(tzinfo=timezone.utc)
 
     @property
     def text(self) -> str:
@@ -1130,33 +1405,41 @@ class Comment:
         return [_CompatTable(self._document, _Table(element, w_ns))
                 for element in comment if _tag(element) == "tbl"]
 
-    def add_paragraph(self, text: str = "", style=None) -> Paragraph:
+    def add_paragraph(
+            self, text: str = "",
+            style: str | ParagraphStyle | None = None) -> Paragraph:
         part, _root, comment = self._elements()
         w_ns = self._document._package.ns["w"]
         builder = Builder(self._document._package.ns)
-        paragraph_element = builder.paragraph(
-            "" if text is None else text,
-            style=_style_name(style) if style is not None else "CommentText")
+        # CommentText is a built-in latent style and may not appear as a
+        # materialized entry in styles.xml, so python-docx assigns its id
+        # directly instead of resolving it through the styles collection.
+        style_id = ("CommentText" if style is None else
+                    _style_id_for_type(self._document, style,
+                                       WD_STYLE_TYPE.PARAGRAPH))
+        paragraph_element = builder.paragraph("", style=style_id)
         comment.append(paragraph_element)
         self._document._mark_changed(part)
         paragraph = _Paragraph(
-            text=views_of(paragraph_element).get("accepted") or "",
-            view="accepted", kind="comment", part_name=part,
+            text="", view="accepted", kind="comment", part_name=part,
             index=len(self.paragraphs) - 1, _element=paragraph_element,
             _root=_root, _w_ns=w_ns, _document=self._document)
-        return _compat_paragraph(paragraph, self._document)
+        paragraph = _compat_paragraph(paragraph, self._document)
+        if text:
+            paragraph.add_run(text)
+        return paragraph
 
-    def add_table(self, rows: int, cols: int, width) -> "_CompatTable":
+    def add_table(self, rows: int, cols: int, width: Length) -> Table:
         part, _root, comment = self._elements()
         w_ns = self._document._package.ns["w"]
-        per_column = int(width) / cols
+        per_column = int(width) // cols if cols else 0
         builder = Builder(self._document._package.ns)
         element = builder.table(rows, cols, widths=[per_column] * cols)
         comment.append(element)
         self._document._mark_changed(part)
         return _CompatTable(self._document, _Table(element, w_ns))
 
-    def iter_inner_content(self):
+    def iter_inner_content(self) -> Iterator[Paragraph | Table]:
         part, root, comment = self._elements()
         w_ns = self._document._package.ns["w"]
         for element in comment:
@@ -1229,8 +1512,8 @@ class _Sections(Sequence):
                     for position in range(*index.indices(len(self)))]
         try:
             section = self._document._sections[index]
-        except IndexError as exc:
-            raise IndexError(str(exc)) from None
+        except IndexError:
+            raise IndexError("list index out of range") from None
         return _Section(self._document, section)
 
     def __repr__(self) -> str:
@@ -1244,22 +1527,28 @@ class _Section:
         self._document = document
         self._section = section
 
-    # -- geometry (python-docx returns Lengths; these are the same ints)
-    page_width = property(lambda self: self._section.page_width,
+    # python-docx distinguishes an explicit value from an omitted XML attribute;
+    # the lower-level writer supplies convenient defaults for omitted values.
+    def _length(self, element_name: str, attribute: str):
+        element = self._section._child(element_name)
+        value = _attr(element, attribute) if element is not None else None
+        return Length(int(value) * 635) if value not in (None, "") else None
+
+    page_width = property(lambda self: self._length("pgSz", "w"),
                           lambda self, v: setattr(self._section, "page_width", v))
-    page_height = property(lambda self: self._section.page_height,
+    page_height = property(lambda self: self._length("pgSz", "h"),
                            lambda self, v: setattr(self._section, "page_height", v))
-    left_margin = property(lambda self: self._section.left_margin,
+    left_margin = property(lambda self: self._length("pgMar", "left"),
                            lambda self, v: setattr(self._section, "left_margin", v))
-    right_margin = property(lambda self: self._section.right_margin,
+    right_margin = property(lambda self: self._length("pgMar", "right"),
                             lambda self, v: setattr(self._section, "right_margin", v))
-    top_margin = property(lambda self: self._section.top_margin,
+    top_margin = property(lambda self: self._length("pgMar", "top"),
                           lambda self, v: setattr(self._section, "top_margin", v))
-    bottom_margin = property(lambda self: self._section.bottom_margin,
+    bottom_margin = property(lambda self: self._length("pgMar", "bottom"),
                              lambda self, v: setattr(self._section, "bottom_margin", v))
-    header_distance = property(lambda self: self._section.header_distance,
+    header_distance = property(lambda self: self._length("pgMar", "header"),
                                lambda self, v: setattr(self._section, "header_distance", v))
-    footer_distance = property(lambda self: self._section.footer_distance,
+    footer_distance = property(lambda self: self._length("pgMar", "footer"),
                                lambda self, v: setattr(self._section, "footer_distance", v))
 
     different_first_page_header_footer = property(
@@ -1267,32 +1556,67 @@ class _Section:
         lambda self, v: setattr(self._section,
                                 "different_first_page_header_footer", v))
 
+    def _special_story(self, name: str, is_header: bool) -> "_HeaderFooter":
+        part = getattr(self._section, name)
+        part._activate_special_story = False
+        return _HeaderFooter(part, is_header)
+
     @property
     def first_page_header(self) -> "_HeaderFooter":
-        return _HeaderFooter(self._section.first_page_header, True)
+        return self._special_story("first_page_header", True)
 
     @property
     def first_page_footer(self) -> "_HeaderFooter":
-        return _HeaderFooter(self._section.first_page_footer, False)
+        return self._special_story("first_page_footer", False)
 
     @property
     def even_page_header(self) -> "_HeaderFooter":
-        return _HeaderFooter(self._section.even_page_header, True)
+        return self._special_story("even_page_header", True)
 
     @property
     def even_page_footer(self) -> "_HeaderFooter":
-        return _HeaderFooter(self._section.even_page_footer, False)
+        return self._special_story("even_page_footer", False)
 
     orientation = property(lambda self: self._section.orientation,
                            lambda self, v: setattr(self._section, "orientation", v))
     start_type = property(lambda self: self._section.start_type,
                           lambda self, v: setattr(self._section, "start_type", v))
-    gutter = property(lambda self: self._section.gutter,
+    gutter = property(lambda self: self._length("pgMar", "gutter"),
                       lambda self, v: setattr(self._section, "gutter", v))
 
-    def iter_inner_content(self):
-        yield self.header
-        yield self.footer
+    def iter_inner_content(self) -> Iterator[Paragraph | Table]:
+        """Yield this section's body paragraphs and tables in document order."""
+        section_elements = [section._sect()
+                            for section in self._document._sections]
+        target = self._section._sect()
+        try:
+            target_index = next(index for index, element in
+                                enumerate(section_elements) if element is target)
+        except StopIteration:
+            return
+
+        paragraphs = {id(paragraph._element): paragraph
+                      for paragraph in self._document.paragraphs}
+        body = self._document._body()
+        current_index = 0
+        w_ns = self._document._package.ns["w"]
+        for child in body:
+            kind = _tag(child)
+            if kind == "p":
+                if current_index == target_index:
+                    paragraph = paragraphs.get(id(child))
+                    if paragraph is not None:
+                        yield paragraph
+                p_pr = next((item for item in child if _tag(item) == "pPr"), None)
+                has_section_break = p_pr is not None and any(
+                    _tag(item) == "sectPr" for item in p_pr
+                )
+                if has_section_break:
+                    current_index += 1
+                    if current_index > target_index:
+                        return
+            elif kind == "tbl" and current_index == target_index:
+                yield _CompatTable(self._document, Table(child, w_ns))
 
     @property
     def header(self) -> "_HeaderFooter":
@@ -1318,59 +1642,95 @@ class _HeaderFooter:
     def is_linked_to_previous(self) -> bool:
         return self._part.is_linked_to_previous
 
-    def _started(self) -> None:
-        """A header/footer this door creates starts the way python-docx's does.
-
-        python-docx's new header part is not empty: it holds one paragraph
-        carrying the built-in *Header* style (Word creates it the same way). So
-        ``header.add_paragraph("Page header")`` leaves **two** paragraphs in
-        the file, and a program that counts them sees the same count after the
-        switch. The core API still creates parts with no invented content.
-        """
-        if self._part.is_linked_to_previous:
+    @is_linked_to_previous.setter
+    def is_linked_to_previous(self, value: bool) -> None:
+        was_linked = self._part.is_linked_to_previous
+        self._part.is_linked_to_previous = value
+        if was_linked and not bool(value) and not self._part.paragraphs:
             self._part.add_paragraph(
                 "", style="Header" if self._is_header else "Footer")
 
+    @staticmethod
+    def _accessor(part) -> str:
+        kind = part._kind
+        if part._which == "first":
+            return f"first_page_{kind}"
+        if part._which == "even":
+            return f"even_page_{kind}"
+        return kind
+
+    def _previous_part(self, part):
+        sections = list(part._document._sections)
+        target = part._section._sect()
+        for index, section in enumerate(sections):
+            if section._sect() is target:
+                if index == 0:
+                    return None
+                return getattr(sections[index - 1], self._accessor(part))
+        return None
+
+    def _effective_part(self):
+        """Resolve an inherited definition, like python-docx's recursive proxy."""
+        part = self._part
+        while part.is_linked_to_previous:
+            previous = self._previous_part(part)
+            if previous is None:
+                return part
+            part = previous
+        return part
+
+    def _started(self):
+        """Resolve/create the definition, using python-docx's initial paragraph."""
+        part = self._effective_part()
+        if part.is_linked_to_previous:
+            part.add_paragraph(
+                "", style="Header" if self._is_header else "Footer")
+        return part
+
     @property
     def paragraphs(self) -> List[Paragraph]:
-        """python-docx creates the part the moment a header is looked at, so
-        ``header.paragraphs[0].text = ...`` works on a document with none.
-        Doing the same here keeps that idiom working; the core API keeps the
-        honest answer (``is_linked_to_previous``, no invented parts)."""
-        self._started()
-        return [_compat_paragraph(p, self._document)
-                for p in self._part.paragraphs]
+        """The inherited or explicit header/footer paragraphs in document order."""
+        part = self._started()
+        return [_compat_paragraph(p, self._document) for p in part.paragraphs]
 
     @property
     def text(self) -> str:
-        """Not in python-docx — the whole header as one string."""
-        return self._part.text
+        """Not in python-docx — the whole effective header/footer as one string."""
+        return self._effective_part().text
 
     @property
     def tables(self):
-        return [_CompatTable(self._document, table) for table in self._part.tables]
+        part = self._started()
+        return [_CompatTable(self._document, table) for table in part.tables]
 
-    def add_table(self, rows: int, cols: int, width):
+    def add_table(self, rows: int, cols: int, width: Length) -> Table:
         """python-docx's ``header.add_table(rows, cols, width)``."""
-        self._started()
+        part = self._started()
         return _CompatTable(self._document,
-                            self._part.add_table(rows, cols, width=width))
+                            part.add_table(rows, cols, width=width))
 
-    def iter_inner_content(self):
-        for item in self._part.iter_inner_content():
+    def iter_inner_content(self) -> Iterator[Paragraph | Table]:
+        part = self._started()
+        for item in part.iter_inner_content():
             if isinstance(item, _Paragraph):
                 yield _compat_paragraph(item, self._document)
             elif isinstance(item, _Table):
                 yield _CompatTable(self._document, item)
 
-    def add_paragraph(self, text: str = "", style=None):
-        self._started()
-        paragraph = self._part.add_paragraph(text, style=_style_name(style))
-        return _compat_paragraph(paragraph, self._document)
+    def add_paragraph(self, text: str = "",
+                      style: str | ParagraphStyle | None = None) -> Paragraph:
+        part = self._started()
+        style_id = _style_id_for_type(
+            self._document, style, WD_STYLE_TYPE.PARAGRAPH)
+        paragraph = _compat_paragraph(
+            part.add_paragraph("", style=style_id), self._document)
+        if text:
+            paragraph.add_run(text)
+        return paragraph
 
     def __repr__(self) -> str:
         kind = "header" if self._is_header else "footer"
-        return f"<{kind}: {self._part.text[:30]!r}>"
+        return f"<{kind}: {self._effective_part().text[:30]!r}>"
 
 
 class _CoreProperties:
@@ -1380,6 +1740,10 @@ class _CoreProperties:
     FIELDS = ("title", "author", "subject", "comments", "category", "keywords",
               "last_modified_by", "revision", "content_status", "identifier",
               "language", "version", "created", "modified", "last_printed")
+    STRING_FIELDS = ("title", "author", "subject", "comments", "category",
+                     "keywords", "last_modified_by", "content_status",
+                     "identifier", "language", "version")
+    DATE_FIELDS = ("created", "modified", "last_printed")
 
     def __init__(self, document: Document):
         self._document = document
@@ -1390,16 +1754,70 @@ class _CoreProperties:
         # its content type and its package relationship
         return _Document.core_properties.fget(self._document)
 
+    @staticmethod
+    def _parse_w3cdtf(value):
+        """Match python-docx 1.2.0's W3CDTF parser, including UTC offsets."""
+        if not value:
+            return None
+        from datetime import datetime, timedelta, timezone
+
+        parseable = value[:19]
+        offset = value[19:]
+        parsed = None
+        for pattern in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", "%Y-%m", "%Y"):
+            try:
+                parsed = datetime.strptime(parseable, pattern)
+            except ValueError:
+                continue
+        if parsed is None:
+            return None
+        if len(offset) == 6:
+            if (offset[0] not in "+-" or offset[3] != ":" or
+                    not offset[1:3].isdigit() or not offset[4:6].isdigit()):
+                return None
+            sign = -1 if offset[0] == "+" else 1
+            parsed += timedelta(hours=int(offset[1:3]) * sign,
+                                minutes=int(offset[4:6]) * sign)
+        return parsed.replace(tzinfo=timezone.utc)
+
     def __getattr__(self, name: str):
-        if name in _CoreProperties.FIELDS:
-            return getattr(self._properties(), name)
-        raise AttributeError(name)
+        if name not in _CoreProperties.FIELDS:
+            raise AttributeError(name)
+        properties = self._properties()
+        if name in _CoreProperties.DATE_FIELDS:
+            return _CoreProperties._parse_w3cdtf(properties._get(name))
+        value = getattr(properties, name)
+        if name == "revision":
+            try:
+                value = int(value)
+            except (TypeError, ValueError):
+                return 0
+            return max(value, 0)
+        return value
 
     def __setattr__(self, name: str, value) -> None:
-        if name in _CoreProperties.FIELDS:
-            setattr(self._properties(), name, value)
+        if name not in _CoreProperties.FIELDS:
+            object.__setattr__(self, name, value)
             return
-        object.__setattr__(self, name, value)
+
+        if name in _CoreProperties.STRING_FIELDS:
+            value = str(value)
+            if len(value) > 255:
+                raise ValueError(
+                    "exceeded 255 char limit for property, got:\n\n'%s'" % value)
+        elif name in _CoreProperties.DATE_FIELDS:
+            from datetime import datetime
+            if not isinstance(value, datetime):
+                raise ValueError(
+                    "property requires <type 'datetime.datetime'> object, got %s"
+                    % type(value))
+        elif name == "revision":
+            if not isinstance(value, int) or value < 1:
+                raise ValueError(
+                    "revision property requires positive int, got '%s'" % value)
+            value = str(value)
+
+        setattr(self._properties(), name, value)
 
 
 class _InlineShape:
@@ -1502,66 +1920,139 @@ class _InlineShapes:
         try:
             return self._shapes()[index]
         except IndexError:
-            raise IndexError(f"no inline shape {index}") from None
+            raise IndexError(f"inline shape index [{index}] out of range") from None
 
 
-class _ParagraphStyle:
-    """One style, python-docx-shaped: ``.name``, ``.style_id``, ``.type``."""
+class BaseStyle:
+    """Common python-docx-shaped interface for a document style."""
 
     def __init__(self, document: Document, style):
         self._document = document
         self._style = style
 
     name = property(lambda self: self._style.name,
-                    lambda self, v: setattr(self._style, "name", v))
+                    lambda self, value: setattr(self._style, "name", value))
     style_id = property(lambda self: self._style.style_id)
 
     @property
     def type(self):
-        from .enum import WD_STYLE_TYPE
-        kind = (self._style.type or "paragraph").upper()
-        return getattr(WD_STYLE_TYPE, kind, WD_STYLE_TYPE.PARAGRAPH)
-
-    @property
-    def paragraph_format(self):
-        return self._style.paragraph_format
+        return _enum_from_token("WD_STYLE_TYPE", self._style.type or "paragraph")
 
     @property
     def builtin(self) -> bool:
         return self._style.builtin
 
+    quick_style = property(lambda self: self._style.quick_style,
+                           lambda self, value: setattr(self._style, "quick_style", value))
+    priority = property(lambda self: self._style.priority,
+                        lambda self, value: setattr(self._style, "priority", value))
+    hidden = property(lambda self: self._style.hidden,
+                      lambda self, value: setattr(self._style, "hidden", value))
+    locked = property(lambda self: self._style.locked,
+                      lambda self, value: setattr(self._style, "locked", value))
+    unhide_when_used = property(
+        lambda self: self._style.unhide_when_used,
+        lambda self, value: setattr(self._style, "unhide_when_used", value))
+
+    def delete(self):
+        self._style.delete()
+
+    def __eq__(self, other) -> bool:
+        if isinstance(other, BaseStyle):
+            other = other._style
+        return self._style == other
+
+    def __hash__(self) -> int:
+        return hash(self._style)
+
+    def __repr__(self) -> str:
+        return repr(self._style)
+
+
+class CharacterStyle(BaseStyle):
+    """Character style proxy: shared style properties and character formatting."""
+
     @property
     def base_style(self):
         found = self._style.base_style
-        return _ParagraphStyle(self._document, found) if found else None
+        return _style_proxy(self._document, found) if found else None
 
-    @property
-    def next_paragraph_style(self):
-        found = self._style.next_paragraph_style
-        return _ParagraphStyle(self._document, found) if found else None
-
-    quick_style = property(lambda self: self._style.quick_style,
-                           lambda self, v: setattr(self._style, "quick_style", v))
-    priority = property(lambda self: self._style.priority,
-                        lambda self, v: setattr(self._style, "priority", v))
-    hidden = property(lambda self: self._style.hidden,
-                      lambda self, v: setattr(self._style, "hidden", v))
-    locked = property(lambda self: self._style.locked,
-                      lambda self, v: setattr(self._style, "locked", v))
-    unhide_when_used = property(
-        lambda self: self._style.unhide_when_used,
-        lambda self, v: setattr(self._style, "unhide_when_used", v))
-
-    def delete(self) -> None:
-        self._style.delete()
+    @base_style.setter
+    def base_style(self, value):
+        if isinstance(value, BaseStyle):
+            value = value._style
+        self._style.base_style = value
 
     @property
     def font(self):
         font = self._style.font
         return _CompatFont(font._run) if font is not None else None
 
-    def __repr__(self) -> str:
-        return repr(self._style)
+
+class ParagraphStyle(CharacterStyle):
+    """Paragraph style proxy with paragraph-level formatting and next style."""
+
+    @property
+    def paragraph_format(self):
+        element = self._style._element_node()
+        if element is None:
+            return None
+        return _CompatParagraphFormat(
+            element, self._document._package.ns["w"])
+
+    @property
+    def next_paragraph_style(self):
+        from .enum import WD_STYLE_TYPE
+        found = self._style.next_paragraph_style
+        if found is None or _enum_from_token(
+                "WD_STYLE_TYPE", getattr(found, "type", "paragraph")) != \
+                WD_STYLE_TYPE.PARAGRAPH:
+            return self
+        return _style_proxy(self._document, found)
+
+    @next_paragraph_style.setter
+    def next_paragraph_style(self, value):
+        if isinstance(value, BaseStyle):
+            value = value._style
+        self._style.next_paragraph_style = value
+
+
+class _TableStyle(ParagraphStyle):
+    """Table style proxy; shares the paragraph and character style surface."""
+
+
+class _NumberingStyle(BaseStyle):
+    """A numbering/list style, kept distinct from paragraph styles."""
+
+    @property
+    def type(self):
+        from .enum import WD_STYLE_TYPE
+        return WD_STYLE_TYPE.LIST
+
+
+# The original internal wrapper name remains an alias for existing callers.
+_ParagraphStyle = ParagraphStyle
+
+
+def _style_proxy(document: Document, style):
+    """Return the python-docx-shaped proxy for the underlying style type."""
+    if style is None:
+        return None
+    from .enum import WD_STYLE_TYPE
+    kind = getattr(style, "type", None) or "paragraph"
+    try:
+        style_type = _enum_from_token("WD_STYLE_TYPE", kind)
+    except (TypeError, ValueError):
+        style_type = None
+    if style_type == WD_STYLE_TYPE.LIST:
+        return _NumberingStyle(document, style)
+    if style_type == WD_STYLE_TYPE.TABLE:
+        return _TableStyle(document, style)
+    if style_type == WD_STYLE_TYPE.CHARACTER:
+        return CharacterStyle(document, style)
+    if style_type == WD_STYLE_TYPE.PARAGRAPH:
+        return ParagraphStyle(document, style)
+    return BaseStyle(document, style)
 
 
 _LATENT_NAME_ALIASES = {
@@ -1807,18 +2298,22 @@ class _Styles:
 
     def __iter__(self):
         for style in self._styles():
-            yield _ParagraphStyle(self._document, style)
+            yield _style_proxy(self._document, style)
 
     def __contains__(self, name) -> bool:
         return name in self._styles()
 
-    def __getitem__(self, name) -> _ParagraphStyle:
-        return _ParagraphStyle(self._document, self._styles()[name])
+    def __getitem__(self, name):
+        try:
+            style = self._styles()[name]
+        except KeyError:
+            raise KeyError("no style with name '%s'" % name) from None
+        return _style_proxy(self._document, style)
 
-    def default(self, style_type) -> "_ParagraphStyle":
+    def default(self, style_type: WD_STYLE_TYPE):
         """python-docx's ``styles.default`` — the default style of that type."""
         found = self._styles().default(style_type)
-        return _ParagraphStyle(self._document, found) if found else None
+        return _style_proxy(self._document, found) if found else None
 
     def get_by_id(self, style_id: Optional[str], style_type):
         """Look up by ID and type, returning that type's default on mismatch."""
@@ -1838,10 +2333,10 @@ class _Styles:
             actual = _enum_from_token("WD_STYLE_TYPE", found.type)
             if expected != actual:
                 return self.default(style_type)
-        return _ParagraphStyle(self._document, found)
+        return _style_proxy(self._document, found)
 
     def get_style_id(self, style_or_name, style_type) -> str:
-        if isinstance(style_or_name, _ParagraphStyle):
+        if isinstance(style_or_name, BaseStyle):
             style_or_name = style_or_name._style
         return self._styles().get_style_id(style_or_name, style_type)
 
@@ -1849,11 +2344,10 @@ class _Styles:
     def latent_styles(self):
         return _CompatLatentStyles(self._document)
 
-    def add_style(self, name: str, style_type,
-                  builtin: bool = False) -> _ParagraphStyle:
+    def add_style(self, name, style_type, builtin=False):
         """``doc.styles.add_style(name, style_type, builtin=False)``."""
         style = self._styles().add_style(name, style_type, builtin=builtin)
-        return _ParagraphStyle(self._document, style)
+        return _style_proxy(self._document, style)
 
 
 class _CompatTable:
@@ -1889,7 +2383,35 @@ class _CompatTable:
 
     @style.setter
     def style(self, value):
-        self._table.style = value
+        style_id = _style_id_for_type(
+            self._document, value, WD_STYLE_TYPE.TABLE)
+        self._table.style = style_id
+
+    @property
+    def autofit(self) -> bool:
+        return bool(self._table.autofit)
+
+    @autofit.setter
+    def autofit(self, value: bool) -> None:
+        self._table.autofit = value
+
+    @property
+    def table_direction(self):
+        # python-docx 1.2.0 documents WD_TABLE_DIRECTION here but its XML
+        # on/off accessor returns bool at runtime. Preserve that observable value.
+        value = self._table.table_direction
+        return None if value is None else value != "ltr"
+
+    @table_direction.setter
+    def table_direction(self, value) -> None:
+        if value is None:
+            self._table.table_direction = None
+            return
+        if isinstance(value, str) and value.lower() in ("ltr", "rtl"):
+            direction = value.lower()
+        else:
+            direction = "rtl" if bool(value) else "ltr"
+        self._table.table_direction = direction
 
     @property
     def alignment(self):
@@ -1910,22 +2432,27 @@ class _CompatTable:
     def columns(self):
         return _CompatColumns(self)
 
-    def cell(self, row_idx: int, col_idx: int):
-        return _CompatCell(self._document, self,
-                           self._table.cell(row_idx, col_idx))
+    def _cell_proxy(self, cell) -> _Cell:
+        origin = cell._merge_origin()
+        if origin is not None:
+            cell = origin
+        return _CompatCell(self._document, self, cell)
 
-    def row_cells(self, row_idx: int):
-        return [_CompatCell(self._document, self, cell)
+    def cell(self, row_idx: int, col_idx: int) -> _Cell:
+        return self._cell_proxy(self._table.cell(row_idx, col_idx))
+
+    def row_cells(self, row_idx: int) -> list[_Cell]:
+        return [self._cell_proxy(cell)
                 for cell in self._table.row_cells(row_idx)]
 
-    def column_cells(self, column_idx: int):
-        return [_CompatCell(self._document, self, cell)
+    def column_cells(self, column_idx: int) -> list[_Cell]:
+        return [self._cell_proxy(cell)
                 for cell in self._table.column_cells(column_idx)]
 
     def add_row(self):
         return _CompatRow(self._document, self, self._table.add_row())
 
-    def add_column(self, width):
+    def add_column(self, width: Length):
         return _CompatColumn(self._document, self,
                              self._table.add_column(width))
 
@@ -1999,8 +2526,7 @@ class _CompatRow:
 
     @property
     def cells(self):
-        return [_CompatCell(self._document, self._table, cell)
-                for cell in self._row.cells]
+        return [self._table._cell_proxy(cell) for cell in self._row.cells]
 
     @property
     def height_rule(self):
@@ -2039,6 +2565,25 @@ class _CompatCell:
                 for table in self._cell.tables]
 
     @property
+    def text(self):
+        return "\n".join(paragraph.text for paragraph in self.paragraphs)
+
+    @text.setter
+    def text(self, value):
+        element = self._cell._element
+        for child in list(element):
+            if _tag(child) != "tcPr":
+                element.remove(child)
+        paragraph_element = Builder({"w": self._cell._w_ns}).paragraph("")
+        element.append(paragraph_element)
+        paragraph = _Paragraph(
+            text="", view="accepted", kind="document",
+            part_name=self._document._package.main_part, index=0,
+            in_table=True, _element=paragraph_element, _root=element,
+            _w_ns=self._cell._w_ns, _document=self._document)
+        _compat_paragraph(paragraph, self._document).add_run(value)
+
+    @property
     def vertical_alignment(self):
         return _enum_from_token("WD_CELL_VERTICAL_ALIGNMENT",
                                 self._cell.vertical_alignment)
@@ -2047,23 +2592,34 @@ class _CompatCell:
     def vertical_alignment(self, value):
         self._cell.vertical_alignment = value
 
-    def add_paragraph(self, text: str = "", style=None):
-        paragraph = self._cell.add_paragraph(text)
+    def add_paragraph(self, text: str = "",
+                      style: str | ParagraphStyle | None = None):
+        paragraph = _compat_paragraph(self._cell.add_paragraph(""), self._document)
+        if text:
+            paragraph.add_run(text)
         if style is not None:
-            paragraph.style = _style_name(style)
-        return _compat_paragraph(paragraph, self._document)
+            paragraph.style = style
+        return paragraph
 
-    def add_table(self, rows: int, cols: int):
-        return _CompatTable(self._document,
-                            self._cell.add_table(rows, cols))
+    def add_table(self, rows: int, cols: int) -> Table:
+        width = self._cell.width if self._cell.width is not None else Inches(1)
+        table = self._cell.add_table(rows, cols, width=width)
+        # Word requires a paragraph after each table in a cell; python-docx
+        # exposes that trailing paragraph through Cell.paragraphs and Cell.text.
+        self._cell.add_paragraph("")
+        return _CompatTable(self._document, table)
 
-    def merge(self, other_cell):
+    def merge(self, other_cell: _Cell):
         core = (other_cell._cell if isinstance(other_cell, _CompatCell)
                 else other_cell)
-        return _CompatCell(self._document, self._table,
-                           self._cell.merge(core))
+        if isinstance(core, _CoreCell) and \
+                core._table() is not self._cell._table():
+            merged = self._cell._merge(core, allow_cross_table=True)
+        else:
+            merged = self._cell.merge(core)
+        return _CompatCell(self._document, self._table, merged)
 
-    def iter_inner_content(self):
+    def iter_inner_content(self) -> Iterator[Paragraph | Table]:
         for item in self._cell.iter_inner_content():
             if isinstance(item, _Paragraph):
                 yield _compat_paragraph(item, self._document)
@@ -2090,8 +2646,13 @@ class _CompatColumn:
 
     @property
     def cells(self):
-        return [_CompatCell(self._document, self._table, cell)
-                for cell in self._column.cells]
+        return [self._table._cell_proxy(cell) for cell in self._column.cells]
+
+
+# Public API aliases used to resolve the documented forward-reference types.
+Hyperlink = _CompatHyperlink
+InlineShape = _InlineShape
+_Cell = _CompatCell
 
 
 # ---------------------------------------------------------------- conveniences

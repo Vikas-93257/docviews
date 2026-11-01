@@ -2,12 +2,17 @@
 
 **Read `.docx` in original, accepted, and markup views across text-bearing parts; author common content; zero runtime dependencies.**
 
-**Status: Alpha.** It is suitable for a controlled pilot of documented
-`python-docx` API code via
-`import docviews.compat as docx`. It is **not** a drop-in `docx` module: code
-using `docx.oxml`, lxml elements, OPC internals, or unsupported authoring (such
-as charts, fields, floating shapes, or rendering) still needs python-docx or a
-different tool. Review the limits below before migrating a production pipeline.
+**Documented-API parity:** verified against python-docx 1.2.0 within the agreed
+boundary: documented public behavior is differentially tested, while
+undocumented lxml, OOXML, and OPC internals are excluded. The source-backed
+584-row matrix records **578 tested behavior matches, 0 partial/not-assessed
+in-scope rows, and 6 structural/internal scope exclusions**. All 471 runtime
+enum members match; the documented-only `MSO_THEME_COLOR_INDEX.MIXED` is
+implemented with the published value `-2`. The full 239-test suite passed on
+each tested CPython patch release from 3.9.25 through 3.15.2. See
+[`API_PARITY_MATRIX.md`](API_PARITY_MATRIX.md) for scope and evidence. Stable
+release metadata **1.0.0** is selected, but no package has been uploaded; PyPI
+publication still requires explicit maintainer approval.
 
 ```python
 from docviews import open_docx
@@ -46,11 +51,14 @@ import docviews.compat as docx            # instead of: import docx
 ```
 
 If it also imports `docx.shared` or `docx.enum.*`, change those import paths to
-`docviews.compat.shared` and `docviews.compat.enum.*` as shown in
-[`COMPARE.md`](https://github.com/Vikas-93257/docviews/blob/main/COMPARE.md). This compatibility door covers a tested subset of
-documented workflows; it does not promise identical signatures or behavior for
-every python-docx use. Run your own representative documents and workflows
-before migrating.
+`docviews.compat.shared` and `docviews.compat.enum.*`. Documented proxy classes
+also have mirrored modules under `docviews.compat`; the full path inventory is
+in [`API_PARITY_MATRIX.md`](API_PARITY_MATRIX.md). The documented public API
+matrix records 578 tested behavior matches and no partial or unassessed
+in-scope behaviors; six structural/internal entries are excluded by the agreed
+boundary. The documented-only `MIXED` enum value is implemented separately from
+the upstream runtime omission. This is parity for the documented contract, not
+for undocumented internals or malformed states outside that contract.
 
 Then a CLI that tells you what your *current* reader is losing:
 
@@ -83,7 +91,7 @@ Many Python document pipelines rely on `python-docx` (95.4M downloads/month in a
 
 And saving through it silently rewrites the package — measured by opening all 832 documents, saving each one **unchanged**, and diffing the two packages:
 
-| open → save, unchanged | python-docx 1.2.0 | docviews 0.3.0a1 |
+| open → save, unchanged | python-docx 1.2.0 | docviews 1.0.0 metadata (local, unpublished) |
 |---|---:|---:|
 | documents opened | 762 / 832 | **831 / 832** |
 | documents that come back with the **same package entries** | 523 | **831** |
@@ -106,18 +114,17 @@ docviews    : the two readings above
 
 ## Install
 
-Install the published distribution with:
-
-```console
-python -m pip install docviews        # no runtime dependencies, tested on Python 3.9–3.15
-```
-
-For an unpublished source checkout or local candidate, install directly from
+Stable-release metadata `1.0.0` has been selected, but the distribution is
+not yet published. For the current local source checkout, install directly from
 the project root:
 
 ```console
 python -m pip install .
 ```
+
+The runtime package has no dependencies and the documented-API test suite is
+verified on CPython 3.9–3.15. Do not expect `pip install docviews==1.0.0` to
+work until the maintainer explicitly authorizes and completes publication.
 
 ## Reading
 
@@ -260,10 +267,14 @@ Block-level revision re-flow (a whole paragraph wrapped in `w:ins`) is reported 
 
 ## Replacing python-docx in your code
 
-For the full import map, supported calls, known gaps, and a safe pilot checklist,
-see [`MIGRATION.md`](https://github.com/Vikas-93257/docviews/blob/main/MIGRATION.md). Contributor and test instructions are in
-[`CONTRIBUTING.md`](https://github.com/Vikas-93257/docviews/blob/main/CONTRIBUTING.md). This is still a controlled-pilot bridge,
-not a general drop-in replacement.
+For the complete import map, documented API scope, and migration notes, see
+[`MIGRATION.md`](https://github.com/Vikas-93257/docviews/blob/main/MIGRATION.md)
+and [`API_PARITY_MATRIX.md`](https://github.com/Vikas-93257/docviews/blob/main/API_PARITY_MATRIX.md).
+Contributor and test instructions are in
+[`CONTRIBUTING.md`](https://github.com/Vikas-93257/docviews/blob/main/CONTRIBUTING.md).
+The compatibility surface matches python-docx 1.2.0's documented public API;
+imports must be redirected to `docviews.compat`, and undocumented internals are
+outside the parity claim.
 
 ```python
 import docviews.compat as docx          # replace `import docx`
@@ -284,15 +295,16 @@ doc.save("out.docx")
 
 `docviews.compat` provides python-docx's shapes — `Document()`, `add_paragraph/add_heading/add_run/add_table/add_page_break`, `add_picture`, `paragraphs`, `tables`, `sections[0].header/.footer`, `core_properties`, `styles.add_style`, `inline_shapes`, `style.name`, `run.font.bold`, `Pt/Inches/Cm/RGBColor`, `WD_ALIGN_PARAGRAPH` — on top of this reader, so you keep the anchors, the views, the scopes and the byte-exact save. [`examples/switch_check.py`](https://github.com/Vikas-93257/docviews/blob/main/examples/switch_check.py) is the acceptance test: the same script run against python-docx and against the shim prints **identical output** (run and diffed locally; see [`CENSUS.md`](https://github.com/Vikas-93257/docviews/blob/main/CENSUS.md) §6.3).
 
-Three deliberate departures, because the alternative is lying about the file:
+Two deliberate file-handling departures:
 
 * `Document(path)` opens ISO-Strict packages (61 of the census files), which python-docx cannot open at all.
 * `save()` copies unedited parts verbatim instead of re-serialising every part it parsed.
-* Seven enum members carry a different XML token than python-docx's (e.g.
-  `WD_COLOR_INDEX.AUTO` is `"none"`, because `w:highlight` has no `"default"`),
-  and 25 that python-docx leaves unmapped carry one, so the writer never emits a
-  placeholder. All of them are listed in [`COMPAT.md`](https://github.com/Vikas-93257/docviews/blob/main/COMPAT.md); `str()` of every member is
-  still python-docx's.
+
+All 471 enum members present in python-docx 1.2.0 match in value, `str()`,
+`repr()`, and `xml_value`. The published enum page also lists
+`MSO_THEME_COLOR_INDEX.MIXED`, which the pinned runtime omits; docviews includes
+it with the Microsoft Office API value `-2` and records the docs/runtime
+conflict in [`COMPAT.md`](https://github.com/Vikas-93257/docviews/blob/main/COMPAT.md).
 
 [`COMPAT.md`](https://github.com/Vikas-93257/docviews/blob/main/COMPAT.md) is the measured answer to "what is still missing": every public
 attribute python-docx 1.2.0 puts on the objects it hands you is answered, and
@@ -314,20 +326,21 @@ preserved byte-for-byte.
 ## Comparison snapshot
 
 [`COMPARE.md`](https://github.com/Vikas-93257/docviews/blob/main/COMPARE.md) is the evidence-linked comparison, including methodology, caveats,
-and a rated scorecard (snapshot updated 2026-10-31). On that rubric, docviews
-scores **8.20 vs 7.50** unweighted. python-docx still leads for migrating an
-existing codebase (**8.45 vs 7.45**); docviews leads for a new document pipeline
-(**8.70 vs 6.95**) and for reading/auditing (**8.85 vs 6.65**). These scores do
-not establish full API parity or ecosystem adoption.
+and a rated scorecard (support/adoption snapshot updated 2026-10-31). On that
+rubric, docviews scores **8.20 vs 7.50** unweighted. python-docx still leads for
+migrating an existing codebase (**8.45 vs 7.45**); docviews leads for a new
+document pipeline (**8.70 vs 6.95**) and for reading/auditing (**8.85 vs 6.65**).
+Those ecosystem scores do not substitute for the separate API matrix.
 
-| measurement | python-docx 1.2.0 | docviews Alpha candidate |
+| measurement | python-docx 1.2.0 | docviews 1.0.0 metadata (unpublished) |
 |---|---|---|
-| downloads / month | 95.4M (checked 2026-10-14) | no public release at the 2026-10-31 snapshot |
-| sampled compatibility | baseline | 276/276 sampled object names, 78/78 sampled callable parameter shapes, 471/471 enum members |
+| downloads / month | 95.4M (checked 2026-10-14) | no published distribution; stable metadata selected 2026-11-01 |
+| documented API parity | baseline | 578 in-scope behavior matches; 0 partial/not-assessed; 6 structural/internal scope exclusions; details in `API_PARITY_MATRIX.md` |
+| bounded compatibility audit | baseline | 276/276 sampled object names, 78/78 sampled callable parameter shapes, 471/471 runtime enum members |
 | unchanged open → save | 762 / 832 open; 7 keep every part | 831 / 832 open; 13,912 / 13,912 parts byte-identical |
 | tricky-document reading | 14,640 numbers lost (15.9%) | reference reader; 0 lost by construction |
 | runtime dependencies | lxml + typing_extensions | none |
-| wheel size | 252,987 B | ~115.3 KiB |
+| wheel size | 252,987 B | about 144 KiB (local stable build) |
 
 A separate eight-document public-sector smoke set sits outside the 832-file
 fixture corpus: docviews preserved all 248/248 package entries; python-docx
@@ -337,22 +350,22 @@ evidence, not a text-rendering gold standard or a broad real-world sample; see
 
 ## Compatibility boundary
 
-The full object-by-object inventory is in [`COMPAT.md`](https://github.com/Vikas-93257/docviews/blob/main/COMPAT.md). The latest audit is a
-**bounded sample**, not the complete documented-public-API matrix: it excludes
-special methods from the name count, does not compare annotations, and does not
-verify every documented method across all inputs and object states. The complete
-member/signature/behavior matrix remains the selected replacement target.
+[`API_PARITY_MATRIX.md`](https://github.com/Vikas-93257/docviews/blob/main/API_PARITY_MATRIX.md)
+is the source-backed documented-public-API inventory and differential record;
+`COMPAT.md` is an additional bounded object-sample audit, not the full matrix.
+The matrix records **578 tested behavior matches, 0 partial/not-assessed in-scope
+entries, and 6 structural/internal exclusions**. It also reports complete
+availability, call-shape, writability, enum, and import-path checks within the
+agreed documented scope. Undocumented `docx.oxml`, lxml, and OPC internals and
+malformed states outside the published contract are not covered.
 
-The full suite passed **149 tests on each Python version from 3.9 through
-3.15** with python-docx 1.2.0 as the optional comparison baseline. After the
-metadata version was selected as `0.3.0a1`, the suite was rerun on Python 3.9
-and 3.15 (**149 passed on each**); fresh Python 3.15 wheel and sdist installs
-also passed DOCX create/save/reopen and CLI smoke checks. The twelve recipes
-from python-docx's own documentation produce matching save-and-reopen
-description transcripts. These checks support a controlled pilot within the
-tested boundary; they do not establish a general drop-in replacement. For the
-complete scope, known gaps, and migration caveats, see [`COMPAT.md`](https://github.com/Vikas-93257/docviews/blob/main/COMPAT.md),
-[`COMPARE.md`](https://github.com/Vikas-93257/docviews/blob/main/COMPARE.md), and [`MIGRATION.md`](https://github.com/Vikas-93257/docviews/blob/main/MIGRATION.md).
+The full 239-test suite passed on **each tested CPython patch release**:
+3.9.25, 3.10.22, 3.11.18, 3.12.16, 3.13.16, 3.14.10, and 3.15.2. The twelve
+selected recipes from python-docx's own documentation produce matching
+save-and-reopen transcripts. Wheel and sdist builds were separately clean-
+installed and smoke-tested; see `RELEASE_READINESS.md` for artifact details.
+For the import boundary and migration caveats, see [`MIGRATION.md`](https://github.com/Vikas-93257/docviews/blob/main/MIGRATION.md),
+[`COMPAT.md`](https://github.com/Vikas-93257/docviews/blob/main/COMPAT.md), and [`COMPARE.md`](https://github.com/Vikas-93257/docviews/blob/main/COMPARE.md).
 
 ## Guardrails, not silence
 

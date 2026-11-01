@@ -1,10 +1,12 @@
 """Enum members, by value and by XML token — generated, checked in.
 
-Regenerate with ``python3 tools/gen_enums.py``. The names, values and
-XML tokens are the OOXML constants (MIT, python-docx 1.2.0); this file contains no python-docx code.
+Regenerate with ``python3 tools/gen_enums.py``. Runtime members and XML
+tokens come from python-docx 1.2.0. The
+documented-only MIXED member is sourced from the Office API; no
+python-docx implementation code is copied here.
 """
 
-# name -> {member: value}, exactly what python-docx exposes
+# name -> {member: value}; runtime values plus documented-only members
 ENUMS = {
     'MSO_COLOR_TYPE': {
         'RGB': 1,
@@ -29,6 +31,7 @@ ENUMS = {
         'LIGHT_2': 4,
         'TEXT_1': 13,
         'TEXT_2': 15,
+        'MIXED': -2,
     },
     'MSO_THEME_COLOR_INDEX': {
         'NOT_THEME_COLOR': 0,
@@ -48,6 +51,7 @@ ENUMS = {
         'LIGHT_2': 4,
         'TEXT_1': 13,
         'TEXT_2': 15,
+        'MIXED': -2,
     },
     'WD_ALIGN_PARAGRAPH': {
         'LEFT': 0,
@@ -542,6 +546,7 @@ ENUMS = {
 # name -> {member: xml token}, the attribute value Word's XML wants
 TOKENS = {
     'MSO_THEME_COLOR': {
+        'NOT_THEME_COLOR': 'UNMAPPED',
         'ACCENT_1': 'accent1',
         'ACCENT_2': 'accent2',
         'ACCENT_3': 'accent3',
@@ -560,6 +565,7 @@ TOKENS = {
         'TEXT_2': 'text2',
     },
     'MSO_THEME_COLOR_INDEX': {
+        'NOT_THEME_COLOR': 'UNMAPPED',
         'ACCENT_1': 'accent1',
         'ACCENT_2': 'accent2',
         'ACCENT_3': 'accent3',
@@ -649,6 +655,9 @@ TOKENS = {
         'EVEN_PAGE': 'even',
     },
     'WD_LINE_SPACING': {
+        'SINGLE': 'UNMAPPED',
+        'ONE_POINT_FIVE': 'UNMAPPED',
+        'DOUBLE': 'UNMAPPED',
         'AT_LEAST': 'atLeast',
         'EXACTLY': 'exact',
         'MULTIPLE': 'auto',
@@ -749,7 +758,22 @@ TOKENS = {
     },
 }
 
-# name -> which of python-docx's two enum bases it derives from
+# documented members absent from the pinned runtime
+DOCUMENTED_ONLY_MEMBERS = {
+    'MSO_THEME_COLOR_INDEX': {
+        'MIXED': -2,
+    },
+}
+DOCUMENTED_ONLY_MEMBER_DOCSTRINGS = {
+    'MSO_THEME_COLOR_INDEX': {
+        'MIXED': 'Indicates multiple theme colors are used.',
+    },
+}
+DOCUMENTED_ONLY_VALUE_SOURCES = {
+    'MSO_THEME_COLOR_INDEX.MIXED': 'https://learn.microsoft.com/en-us/office/vba/api/office.msothemecolorindex',
+}
+
+# name -> documented base, or PlainEnum for a direct enum.Enum base
 BASES = {
     'MSO_COLOR_TYPE': 'BaseEnum',
     'MSO_THEME_COLOR': 'BaseXmlEnum',

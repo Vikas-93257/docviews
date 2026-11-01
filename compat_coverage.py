@@ -354,29 +354,11 @@ def module_report(rows: list) -> str:
     return "\n".join(lines)
 
 
-# Tokens we give on purpose where python-docx has something else; each is a
-# statement about what Word's XML accepts, and each is checked in test_enums.py.
-DELIBERATE_TOKENS = {
-    ("WD_COLOR_INDEX", "AUTO"): ("default", "none"),
-    ("WD_COLOR", "AUTO"): ("default", "none"),
-    ("WD_LINE_SPACING", "SINGLE"): ("UNMAPPED", None),
-    ("WD_LINE_SPACING", "ONE_POINT_FIVE"): ("UNMAPPED", None),
-    ("WD_LINE_SPACING", "DOUBLE"): ("UNMAPPED", None),
-    ("MSO_THEME_COLOR", "NOT_THEME_COLOR"): ("UNMAPPED", None),
-    ("MSO_THEME_COLOR_INDEX", "NOT_THEME_COLOR"): ("UNMAPPED", None),
-}
-
-
 def enum_protocol() -> str:
-    """How a compat member behaves compared with a python-docx member.
-
-    Names are not the whole contract: code iterates an enum, looks a member up
-    by value, prints it, and round-trips tokens. This compares all of that,
-    member by member, against python-docx, and counts the tokens only we carry.
-    """
+    """Compare runtime enum values, string forms, reprs, and XML tokens."""
     import docviews.compat.enum as our_enum
 
-    compared = divergences = additions = deliberate = 0
+    compared = divergences = token_differences = 0
     for module_name in ("docx.enum.text", "docx.enum.style", "docx.enum.section",
                         "docx.enum.table", "docx.enum.shape", "docx.enum.dml"):
         theirs_module = __import__(module_name, fromlist=["*"])
@@ -392,21 +374,27 @@ def enum_protocol() -> str:
                 compared += 1
                 if (a.value, str(a), repr(a)) != (b.value, str(b), repr(b)):
                     divergences += 1
-                their_token = getattr(a, "xml_value", None)
-                our_token = getattr(b, "xml_value", None)
-                if their_token != our_token:
-                    if their_token is None:
-                        additions += 1         # a token python-docx does not map
-                    elif DELIBERATE_TOKENS.get((name, member)) == (their_token,
-                                                                   our_token):
-                        deliberate += 1        # documented, and tested
-                    else:
-                        divergences += 1
-    return (f"{compared} members compared with python-docx — value, `str()`, "
-            f"`repr()` identical for all {compared}; {additions} members carry "
-            f"a token python-docx leaves unmapped (e.g. `WD_BREAK.PAGE`), "
-            f"{deliberate} carry a different token on purpose (listed below), "
-            f"{divergences} unexplained")
+                if getattr(a, "xml_value", None) != getattr(b, "xml_value", None):
+                    token_differences += 1
+    return (f"{compared} runtime members compared with python-docx — value, "
+            f"`str()`, `repr()`, and `xml_value` match for all {compared}; "
+            f"{token_differences} token differences and {divergences} other "
+            "runtime-member divergences")
+
+
+def enum_discrepancy_note() -> str:
+    """Document the sole docs/runtime enum difference without hiding it."""
+    import docviews.compat.enum as our_enum
+
+    member = our_enum.MSO_THEME_COLOR_INDEX.MIXED
+    if member.value != -2:
+        return "The docs-only `MIXED` member is missing or has the wrong value."
+    return (
+        "The published `MSO_THEME_COLOR_INDEX` page lists `MIXED`, but the "
+        "python-docx 1.2.0 runtime omits it. docviews implements the documented "
+        "member with value `-2` from the Microsoft Office API reference; its "
+        "`xml_value` is unmapped. The inventory keeps the runtime absence explicit."
+    )
 
 
 def report(rows: list) -> str:
@@ -420,30 +408,6 @@ def report(rows: list) -> str:
         lines.append(f"| {row['object']} | {row['asked']} | {row['answered']} | {missing} |")
     lines.append(f"| **total** | **{asked}** | **{answered} "
                  f"({answered / asked * 100:.1f}%)** | **{asked - answered}** |")
-    return "\n".join(lines)
-
-
-REASONS = {
-    ("WD_COLOR_INDEX", "AUTO"): "`w:highlight` has no `default` value; "
-                                "`none` is what clears it",
-    ("WD_COLOR", "AUTO"): "same class as `WD_COLOR_INDEX` (an alias)",
-    ("WD_LINE_SPACING", "SINGLE"): "python-docx marks it unmapped; line rule "
-                                   "`auto` is what Word writes",
-    ("WD_LINE_SPACING", "ONE_POINT_FIVE"): "as above",
-    ("WD_LINE_SPACING", "DOUBLE"): "as above",
-    ("MSO_THEME_COLOR", "NOT_THEME_COLOR"): "python-docx marks it unmapped; "
-                                            "no token is written",
-    ("MSO_THEME_COLOR_INDEX", "NOT_THEME_COLOR"): "same class, alias",
-}
-
-
-def token_table() -> str:
-    lines = ["| member | python-docx `xml_value` | here | why |",
-             "|---|---|---|---|"]
-    for (cls, member), (theirs, ours) in sorted(DELIBERATE_TOKENS.items()):
-        lines.append(f"| `{cls}.{member}` | `{theirs}` | "
-                     f"`{ours if ours is not None else 'None'}` | "
-                     f"{REASONS.get((cls, member), '')} |")
     return "\n".join(lines)
 
 
@@ -526,14 +490,17 @@ def main() -> int:
         "annotations. Signatures unavailable to `inspect.signature` on a runtime "
         "are counted separately, not guessed; for example, inherited `int` "
         "method `Length.conjugate` is uninspectable on Python 3.9 but exists on "
-        "both implementations. Neither inventory checks behavior for every "
-        "documented method, input, or object state. The remaining engineering "
-        "target is a "
-        "complete official-API member/signature/behavior matrix.",
+        "both implementations. This sample does not itself check every "
+        "documented method, input, or object state. The separate complete "
+        "source-backed assessment is in `API_PARITY_MATRIX.md`: 578 in-scope "
+        "behaviors are tested matches, with no partial or unassessed in-scope "
+        "records; six structural/internal entries are excluded by the agreed "
+        "boundary. This bounded sample report is not itself the full parity "
+        "assessment.",
         "## Imports\n\nThe names python-docx ships *beside* a document — the "
         "ones existing\ncode imports directly:\n\n" + module_table + "\n\n"
         + protocol,
-        "## Token differences that are deliberate\n\n" + token_table(),
+        "## Documented/runtime enum discrepancy\n\n" + enum_discrepancy_note(),
         beyond_section(beyond),
         "## How this is checked\n\nA name answering is the start, not the "
         "end. Focused API behavior is compared with python-docx in "

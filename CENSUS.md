@@ -530,24 +530,17 @@ The members are real enum members, not objects that imitate them:
 members derive from ``BaseXmlEnum``, so ``list()``, ``WD_ALIGN_PARAGRAPH(1)``,
 ``__members__``, ``isinstance``, ``from_xml()`` and ``to_xml()`` all work.
 ``tests/test_enums.py`` compares all 471 members with python-docx's own —
-``value``, ``str()`` and ``repr()`` are identical for every one of them. The
-tokens are python-docx's too, with two exceptions that are stated here and in
-``COMPAT.md`` rather than discovered by a user:
+``value``, ``str()``, ``repr()`` and ``xml_value`` are identical for every
+runtime member. The deprecated ``WD_BREAK_TYPE`` has no XML-token property in
+either implementation; ``Run.add_break`` maps its documented values explicitly
+when writing ``<w:br>``. The candidate also includes the docs-only
+``MSO_THEME_COLOR_INDEX.MIXED`` member with Office API value ``-2``; the pinned
+python-docx runtime omits it, and that discrepancy is recorded separately.
 
-* ``WD_BREAK``/``WD_BREAK_TYPE`` carry the tokens python-docx's deprecated class
-  never mapped (``"page"``, ``"column"``, …), so ``run.add_break(WD_BREAK.PAGE)``
-  writes ``<w:br w:type="page"/>``. 25 members gain a token this way;
-* seven members carry a *different* token on purpose (``WD_COLOR_INDEX.AUTO``
-  is ``"none"`` because ``w:highlight`` has no ``"default"``; three
-  ``WD_LINE_SPACING`` members and ``MSO_THEME_COLOR.NOT_THEME_COLOR`` are
-  ``None`` rather than the ``"UNMAPPED"`` marker, so the writer never emits a
-  placeholder).
-
-Zero members diverge unexplained. `str(WD_ALIGN_PARAGRAPH.CENTER)` is
-`"CENTER (1)"`, exactly as in python-docx; the token is `.xml_value` (and our
-`.ooxml`), which is what lets `paragraph.alignment =
-WD_ALIGN_PARAGRAPH.CENTER` write a correct file with the *same integer*
-python-docx uses.
+`str(WD_ALIGN_PARAGRAPH.CENTER)` is ``"CENTER (1)"``, exactly as in
+python-docx; the token is `.xml_value` (and docviews' `.ooxml` alias), which is
+what lets `paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER` write a file using
+the same integer value python-docx uses.
 
 ### (b) What the count does and does not mean
 
@@ -589,28 +582,23 @@ test_images 14, test_authoring 23, test_cli 7, test_comments 9, test_corpus 9,
 and the parity files added for that work: test_write_v03 11,
 test_authoring_v03 14 (through the shim as well), test_enums 8.
 
-**Latest validation (2026-10-31):** the full suite passes **149 tests on each
-Python version from 3.9 through 3.15** with `python-docx==1.2.0`; the focused
-`tests/test_compat_parity.py` and `tests/test_authoring_v03.py` run passes **32
-tests on each of the same seven versions**. Compatibility regressions cover,
-among other areas, latent-style defaults and item properties, run-content
-iteration and rendered page-break fragments, Drawing/Image access, python-docx-
-compatible `RGBColor` and length-unit constructors, plus the earlier comments,
-hyperlink, line-spacing, tab-stop, section, table-style, picture, keyword, and
-stream-save cases. The twelve-recipe documented transcript diff was rerun and
-is empty. The expanded `compat_coverage.py` audit (generated under Python 3.13)
+**Latest validation (2026-11-01):** the full suite passes **239 tests on each
+of seven tested CPython patch releases** (3.9.25, 3.10.22, 3.11.18, 3.12.16,
+3.13.16, 3.14.10, and 3.15.2) with `python-docx==1.2.0`; each run reports one
+upstream style-ID deprecation warning. The complete source-backed documented-
+API matrix records **578 tested behavior matches, 0 partial/unassessed in-scope
+records, and 6 structural/internal exclusions**; see `API_PARITY_MATRIX.md`.
+The separate bounded `compat_coverage.py` audit (generated under Python 3.13)
 reports **276/276** sampled public attribute names, **78/78** sampled
-method/constructor parameter shapes
-(names/order/kinds/defaults; annotations excluded), and **471/471** enum members
-with identical values, `str()`, and `repr()`. This remains a bounded sample,
-not proof of complete documented-API parity or all behavior; `COMPAT.md` records
-the limit. The refreshed five-run writer microbenchmark found docviews faster
-end-to-end at 500 and 5,000 paragraphs plus a populated table, while
-python-docx remains faster at save alone; updated numbers and caveats are in
-`COMPARE.md`. After the final metadata version selection to `0.3.0a1`, the full
-suite was rerun on Python 3.9 and 3.15 (**149 passed on each**); fresh Python
-3.15 wheel and sdist installs also passed DOCX and CLI smoke checks. None of
-this updates the 2026-10-17 corpus-sweep statistics above.
+method/constructor parameter shapes (names/order/kinds/defaults; annotations
+excluded), and **471/471** runtime enum members with identical values, `str()`,
+and `repr()`. The twelve-recipe documented transcript diff is empty. The
+refreshed five-run writer microbenchmark found docviews faster end-to-end at
+500 and 5,000 paragraphs plus a populated table, while python-docx remains
+faster at save alone; updated numbers and caveats are in `COMPARE.md`. Stable
+metadata `1.0.0` was selected after parity assessment; the final wheel and sdist
+are rebuilt and validated separately. None of this updates the 2026-10-17
+corpus-sweep statistics above.
 
 ### (d) The switch acceptance test
 

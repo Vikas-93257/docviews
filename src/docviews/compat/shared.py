@@ -75,7 +75,7 @@ class RGBColor(tuple):
         return "%02X%02X%02X" % self
 
     @classmethod
-    def from_string(cls, rgb_hex_str: str):
+    def from_string(cls, rgb_hex_str: str) -> RGBColor:
         r = int(rgb_hex_str[:2], 16)
         g = int(rgb_hex_str[2:4], 16)
         b = int(rgb_hex_str[4:], 16)

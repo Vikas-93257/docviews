@@ -244,9 +244,15 @@ class Section:
 
     @page_width.setter
     def page_width(self, value) -> None:
-        height = self._child("pgSz")
-        self._replace("pgSz", w=int(round(value / 635)),
-                      h=int(_attr(height, "h") or 16838))
+        element = self._child("pgSz")
+        if element is None:
+            element = ET.SubElement(self._sect(), self._document._w("pgSz"))
+        name = self._document._w("w")
+        if value is None:
+            element.attrib.pop(name, None)
+        else:
+            element.set(name, str(int(round(value / 635))))
+        self._touch()
 
     @property
     def page_height(self) -> int:
@@ -256,8 +262,15 @@ class Section:
 
     @page_height.setter
     def page_height(self, value) -> None:
-        self._replace("pgSz", w=int(_attr(self._child("pgSz"), "w") or 11906),
-                      h=int(round(value / 635)))
+        element = self._child("pgSz")
+        if element is None:
+            element = ET.SubElement(self._sect(), self._document._w("pgSz"))
+        name = self._document._w("h")
+        if value is None:
+            element.attrib.pop(name, None)
+        else:
+            element.set(name, str(int(round(value / 635))))
+        self._touch()
 
     # what a document that states no geometry gets: the same numbers the blank
     # document carries (Letter, 1in top/bottom, 1.25in sides, 0.5in header)
@@ -274,9 +287,13 @@ class Section:
     def _set_margin(self, name: str, value) -> None:
         margin = self._child("pgMar")
         if margin is None:
-            margin = self._replace("pgMar", top=1440, right=1440, bottom=1440,
-                                   left=1440, header=708, footer=708, gutter=0)
-        margin.set(self._document._w(name), str(int(round(value / 635))))
+            margin = ET.SubElement(self._sect(), self._document._w("pgMar"))
+        attr_name = self._document._w(name)
+        if value is None:
+            margin.attrib.pop(attr_name, None)
+        else:
+            margin.set(attr_name, str(int(round(value / 635))))
+        self._touch()
 
     header_distance = property(lambda self: self._margin("header"),
                                lambda self, v: self._set_margin("header", v))
@@ -327,11 +344,12 @@ class Section:
 
     @property
     def even_page_header(self) -> "_HeaderFooter":
-        """The header on even pages — sets ``w:evenAndOddHeaders`` when written."""
+        """Header content for even pages; it is used when the document setting enables it."""
         return self._typed("header", "even")
 
     @property
     def even_page_footer(self) -> "_HeaderFooter":
+        """Footer content for even pages; it is used when the document setting enables it."""
         return self._typed("footer", "even")
 
     @property
@@ -359,10 +377,10 @@ class Section:
         ``page_width`` back sees the same number it saw before the migration.
         Use ``page_width``/``page_height`` to change the paper.
         """
-        landscape = "landscape" in _enum_name(value).lower()
-        if self._child("pgSz") is None:
-            self._replace("pgSz", w=12240, h=15840)
+        landscape = value is not None and "landscape" in _enum_name(value).lower()
         element = self._child("pgSz")
+        if element is None:
+            element = ET.SubElement(self._sect(), self._document._w("pgSz"))
         element.set(self._document._w("orient"),
                     "landscape" if landscape else "portrait")
         self._touch()
@@ -383,11 +401,16 @@ class Section:
         names = {"CONTINUOUS": "continuous", "NEW_COLUMN": "nextColumn",
                  "NEW_PAGE": "nextPage", "EVEN_PAGE": "evenPage",
                  "ODD_PAGE": "oddPage"}
-        name = _enum_name(value).upper()
+        name = "NEW_PAGE" if value is None else _enum_name(value).upper()
+        section = self._sect()
         element = self._child("type")
+        if name == "NEW_PAGE":
+            if element is not None:
+                section.remove(element)
+                self._touch()
+            return
         if element is None:
             element = ET.Element(self._document._w("type"))
-            section = self._sect()
             index = 0                       # w:type follows the w:*Reference
             for position, child in enumerate(section):
                 if _tag(child) in ("headerReference", "footerReference"):
@@ -493,6 +516,9 @@ class _HeaderFooter:
         self._which = which               # "default" | "first" | "even"
         self._element: Optional[ET.Element] = None
         self._name: str = ""
+        # The native authoring API enables a special-page layout on write;
+        # the python-docx compatibility proxy opts out of that convenience.
+        self._activate_special_story = True
 
     # ------------------------------------------------------------- resolution
     def _reference(self) -> Optional[ET.Element]:
@@ -508,6 +534,23 @@ class _HeaderFooter:
     def is_linked_to_previous(self) -> bool:
         """True when this section has no header/footer part of its own."""
         return self._reference() is None
+
+    @is_linked_to_previous.setter
+    def is_linked_to_previous(self, value: bool) -> None:
+        linked = bool(value)
+        if linked == self.is_linked_to_previous:
+            return
+        if linked:
+            reference = self._reference()
+            if reference is not None:
+                rel_id = _attr(reference, "id")
+                self._section._sect().remove(reference)
+                self._section._touch()
+                self._document._drop_rel(rel_id)
+            self._name = ""
+            self._element = None
+        else:
+            self._ensure_part()
 
     def _part_name(self) -> str:
         if self._name:
@@ -534,14 +577,13 @@ class _HeaderFooter:
             self._kind, self._document._rel_to_main(name))
         reference = ET.Element(self._document._w(f"{self._kind}Reference"))
         reference.set(self._document._w("type"), self._which)
-        if self._which == "first":
-            # Word only prints a first-page header when the section says so
-            if self._section._child("titlePg") is None:
+        if self._activate_special_story:
+            if self._which == "first" and self._section._child("titlePg") is None:
                 self._section._sect().append(
                     ET.Element(self._document._w("titlePg")))
                 self._section._touch()
-        elif self._which == "even":
-            self._document.settings.odd_and_even_pages_header_footer = True
+            elif self._which == "even":
+                self._document.settings.odd_and_even_pages_header_footer = True
         reference.set(self._document._r("id"), rel_id)
         section = self._section._sect()
         section.insert(0, reference)          # references come first in w:sectPr
@@ -623,13 +665,14 @@ class _HeaderFooter:
     def add_table(self, rows: int = 1, cols: int = 1, *, width=None,
                   text: Optional[Sequence[Sequence[str]]] = None):
         """A table in the header/footer, creating the part if it has none."""
-        from .write import Table, twips
+        from .write import Table
         name = self._ensure_part()
         root = self._element
         builder = Builder({"w": root_ns(root), "r": TRANSITIONAL["r"]})
+        widths = None if width is None else (
+            [int(width) // cols] * cols if cols else [])
         element = builder.table(rows, cols, style="TableGrid",
-                                widths=[twips(width)] * cols if width else None,
-                                text=text)
+                                widths=widths, text=text)
         root.append(element)
         self._document._mark_changed(name)
         return Table(element, builder.w)
@@ -678,6 +721,9 @@ def _ui_name(internal: str) -> str:
     if not internal:
         return internal
     return _UI_NAMES.get(internal.strip().lower(), internal)
+
+
+_NO_STYLE_VALUE = object()
 
 
 class Style:
@@ -756,21 +802,32 @@ class Style:
             return None
         return ParagraphFormat(element, self._document._w("").strip("{}"))
 
-    def _child_value(self, field: str, value: Optional[str] = None):
-        """Read — or, given ``value``, write — a plain child element's w:val."""
+    def _child_value(self, field: str, value=_NO_STYLE_VALUE):
+        """Read or write a plain child element's ``w:val``.
+
+        ``None`` removes an optional style relationship, while the sentinel
+        distinguishes that operation from a read. This mirrors the OOXML
+        setters used by python-docx for ``basedOn`` and ``next``.
+        """
         element = self._element_node()
         if element is None:
             return None
-        for child in element:
+        for child in list(element):
             if _tag(child) != field:
                 continue
-            if value is None:
+            if value is _NO_STYLE_VALUE:
                 return _attr(child, "val") or None
+            if value is None:
+                element.remove(child)
+                self._document._touch_styles()
+                return None
+            value = str(value)
             child.set(self._document._w("val"), value)
             self._document._touch_styles()
             return value
-        if value is None:
+        if value is _NO_STYLE_VALUE or value is None:
             return None
+        value = str(value)
         new_element = ET.SubElement(element, self._document._w(field))
         new_element.set(self._document._w("val"), value)
         self._document._touch_styles()
@@ -792,7 +849,8 @@ class Style:
 
     @base_style.setter
     def base_style(self, value) -> None:
-        self._child_value("basedOn", str(getattr(value, "style_id", value) or ""))
+        style_id = getattr(value, "style_id", value)
+        self._child_value("basedOn", style_id)
 
     @property
     def next_paragraph_style(self) -> Optional["Style"]:
@@ -802,35 +860,40 @@ class Style:
 
     @next_paragraph_style.setter
     def next_paragraph_style(self, value) -> None:
-        self._child_value("next", str(getattr(value, "style_id", value) or ""))
+        style_id = getattr(value, "style_id", value)
+        if style_id == self.style_id:
+            style_id = None
+        self._child_value("next", style_id)
 
-    def _flag(self, name: str, value=None):
+    def _flag(self, name: str, value=_NO_STYLE_VALUE):
         element = self._element_node()
+        if value is _NO_STYLE_VALUE:
+            if element is not None:
+                for child in element:
+                    if _tag(child) == name:
+                        token = (_attr(child, "val") or "1").lower()
+                        return token not in ("0", "false", "off", "no")
+            return False
         if element is None:
-            return None if value is None else value
+            return bool(value)
         for child in list(element):
-            if _tag(child) != name:
-                continue
-            if value is None:
-                return True
-            element.remove(child)
-            break
-        if value is None or not value:
-            if value is not None:
-                self._document._touch_styles()
-            return None if value is None else False
+            if _tag(child) == name:
+                element.remove(child)
+        if not bool(value):
+            self._document._touch_styles()
+            return False
         ET.SubElement(element, self._document._w(name))
         self._document._touch_styles()
         return True
 
     @property
     def hidden(self):
-        """True when the style is hidden from Word's UI (``w:hidden``)."""
-        return self._flag("hidden")
+        """True when the style is hidden from Word's UI (``w:semiHidden``)."""
+        return self._flag("semiHidden")
 
     @hidden.setter
     def hidden(self, value):
-        self._flag("hidden", value)
+        self._flag("semiHidden", value)
 
     @property
     def quick_style(self):
@@ -1139,9 +1202,6 @@ class Styles:
             element = style._element_node()
             if element is not None and _attr(element, "default") in ("1", "true"):
                 return style
-        for style in self:
-            if style.type == kind:
-                return style
         return None
 
     def get_by_id(self, style_id: str) -> Style:
@@ -1262,15 +1322,17 @@ class Styles:
         element = ET.SubElement(root, self._document._w("style"))
         element.set(self._document._w("type"), kind)
         element.set(self._document._w("styleId"), style_id)
+        if not builtin:
+            element.set(self._document._w("customStyle"), "1")
         label = ET.SubElement(element, self._document._w("name"))
         label.set(self._document._w("val"), name)
         if not builtin:
-            based = ET.SubElement(element, self._document._w("basedOn"))
-            based.set(self._document._w("val"), base or (
-                "Normal" if kind == "paragraph" else "DefaultParagraphFont"))
-            if kind == "paragraph":
+            if base is not None:
+                based = ET.SubElement(element, self._document._w("basedOn"))
+                based.set(self._document._w("val"), str(base))
+            if kind == "paragraph" and next_style is not None:
                 following = ET.SubElement(element, self._document._w("next"))
-                following.set(self._document._w("val"), next_style or "Normal")
+                following.set(self._document._w("val"), str(next_style))
         self._format_style(element, bold=bold, italic=italic,
                            underline=underline, size=size, color=color,
                            font=font, align=align)
@@ -1313,6 +1375,7 @@ class CoreProperties:
         "dc": "http://purl.org/dc/elements/1.1/",
         "cp": "http://schemas.openxmlformats.org/package/2006/metadata/core-properties",
         "dcterms": "http://purl.org/dc/terms/",
+        "xsi": "http://www.w3.org/2001/XMLSchema-instance",
     }
 
     def __init__(self, document):
@@ -1354,15 +1417,22 @@ class CoreProperties:
 
     def _set(self, field: str, value: str) -> None:
         prefix, local = self.FIELDS[field]
+        if field in {"created", "modified"}:
+            for ns_prefix, namespace in self.NAMESPACES.items():
+                ET.register_namespace(ns_prefix, namespace)
         root = self._root(create=True)
         for child in root:
             if isinstance(child.tag, str) and \
                     child.tag == f"{{{self.NAMESPACES[prefix]}}}{local}":
                 child.text = value
+                if field in {"created", "modified"}:
+                    child.set(f"{{{self.NAMESPACES['xsi']}}}type", "dcterms:W3CDTF")
                 self._document._mark_changed(self._name())
                 return
         element = ET.SubElement(root, f"{{{self.NAMESPACES[prefix]}}}{local}")
         element.text = value
+        if field in {"created", "modified"}:
+            element.set(f"{{{self.NAMESPACES['xsi']}}}type", "dcterms:W3CDTF")
         self._document._mark_changed(self._name())
 
     title = property(lambda self: self._get("title"),

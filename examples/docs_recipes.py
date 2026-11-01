@@ -20,13 +20,14 @@ from __future__ import annotations
 import io
 import struct
 import sys
+import tempfile
 import zlib
 from pathlib import Path
 
 SHIM = "--shim" in sys.argv
 
-# the author a brand-new document carries before the program sets one
-DEFAULT_AUTHOR = "" if SHIM else "python-docx"
+# The normalized template author both libraries carry before the recipe sets one.
+DEFAULT_AUTHOR = "python-docx"
 
 if SHIM:
     import docviews.compat as docx
@@ -198,9 +199,8 @@ def describe(path: str) -> str:
     for name in ("title", "author", "subject", "category"):
         value = getattr(properties, name)
         if name == "author" and value == DEFAULT_AUTHOR:
-            # a template artifact, not behaviour: python-docx's bundled blank
-            # document says the author is "python-docx"; ours leaves it empty
-            # and lets the program say who wrote the file
+            # a template artifact, not recipe behavior: both template files
+            # carry "python-docx" as their default author
             value = "<library default>"
         lines.append(f"  {name}={value!r}")
 
@@ -216,7 +216,7 @@ def describe(path: str) -> str:
 
 
 def main() -> int:
-    out_dir = Path("/tmp/docs_recipes")
+    out_dir = Path(tempfile.gettempdir()) / "docs_recipes"
     out_dir.mkdir(exist_ok=True)
     for recipe in RECIPES:
         name = recipe.__name__

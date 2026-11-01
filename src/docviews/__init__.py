@@ -42,17 +42,19 @@ from .authoring import (CoreProperties, InlineShape, Section, Sections, Style,
 from .comments import Anchor, Comment
 from .document import (Document, NumberToken, PartInfo, RevisionInfo,
                        open_docx)
+from .exceptions import InvalidSpanError, InvalidXmlError, PythonDocxError
 from .images import ImageError, ImageInfo, detect
 from .ooxml import DocxError, Limits, Package, Part, PartTooLarge
 from .views import (VIEWS, AlignRef, Paragraph, StyleRef, Views, views_of)
 from .units import Cm, Emu, Inches, Length, Mm, Pt, RGBColor, Twips
 from .write import Builder, Cell, Row, Table
 
-__version__ = "0.3.0a1"
+__version__ = "1.0.0"
 __all__ = [
     "Document", "open_docx", "PartInfo", "RevisionInfo", "NumberToken",
     "Comment", "Anchor",
     "Package", "Part", "Limits", "DocxError", "PartTooLarge",
+    "PythonDocxError", "InvalidSpanError", "InvalidXmlError",
     "VIEWS", "Paragraph", "Views", "views_of", "StyleRef", "AlignRef",
     "Builder", "Table", "Row", "Cell",
     "Section", "Sections", "Style", "Styles", "CoreProperties",

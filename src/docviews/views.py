@@ -938,6 +938,11 @@ def stream_paragraphs(package: Package, view: str = "accepted",
         raise PartTooLarge(problem)
     index = 0
     stack: List[str] = []
+    # The tree walk emits the anchor paragraph before text-box paragraphs
+    # nested in it. iterparse encounters the nested paragraphs first on their
+    # end events, so buffer their small text results until the anchor closes.
+    # This preserves the tree walk's reading order without retaining XML trees.
+    pending_textbox_paragraphs: List[Paragraph] = []
     with package._zip.open(name) as fh:
         for event, el in ET.iterparse(fh, events=("start", "end")):
             tag = _tag(el)
@@ -950,12 +955,34 @@ def stream_paragraphs(package: Package, view: str = "accepted",
                     el.clear()
                 continue
             in_box = "txbxContent" in stack
+            if in_box:
+                box_at = stack.index("txbxContent")
+                anchored = "p" in stack[:box_at]
+            else:
+                anchored = False
             v = views_of(el)
-            yield Paragraph(text=v.get(view), view=view,
-                            kind="textbox" if in_box else "document",
-                            part_name=name, index=index,
-                            in_table="tbl" in stack,
-                            in_textbox=in_box,
-                            revision_ids=_structural_revisions(el))
-            index += 1
+            paragraph = Paragraph(text=v.get(view), view=view,
+                                  kind="textbox" if in_box else "document",
+                                  part_name=name, index=index,
+                                  in_table="tbl" in stack,
+                                  in_textbox=in_box,
+                                  revision_ids=_structural_revisions(el))
+            if anchored:
+                pending_textbox_paragraphs.append(paragraph)
+            else:
+                paragraph.index = index
+                index += 1
+                yield paragraph
+                if not in_box and pending_textbox_paragraphs:
+                    for textbox_paragraph in pending_textbox_paragraphs:
+                        textbox_paragraph.index = index
+                        index += 1
+                        yield textbox_paragraph
+                    pending_textbox_paragraphs.clear()
             el.clear()
+    # A malformed or unusually structured part may contain an unanchored
+    # text box after the last normal paragraph. Do not lose its paragraphs.
+    for textbox_paragraph in pending_textbox_paragraphs:
+        textbox_paragraph.index = index
+        index += 1
+        yield textbox_paragraph

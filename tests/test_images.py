@@ -161,13 +161,17 @@ def test_python_docx_can_read_a_picture_added_to_an_existing_document(tmp_path):
     path = _corpus_file_with_media()
     if path is None:
         pytest.skip("no corpus file with media in this checkout")
-    before = len(open_docx(path.read_bytes()).inline_shapes)
+    # Compare python-docx to its own pre-edit baseline. docviews intentionally
+    # sees pictures in text boxes that python-docx does not expose as
+    # InlineShapes, so using docviews' count here makes the result depend on
+    # which corpus file a platform's path ordering selects.
+    theirs_before = len(docx.Document(str(path)).inline_shapes)
     doc = Document(path.read_bytes())
     doc.add_picture(blobs.PNG_96, width=EMU_PER_INCH)
     target = tmp_path / "with-picture.docx"
     doc.save(target)
     theirs = docx.Document(str(target))
-    assert len(theirs.inline_shapes) == before + 1
+    assert len(theirs.inline_shapes) == theirs_before + 1
 
 
 def test_a_picture_can_be_put_inside_an_existing_run():

@@ -111,12 +111,13 @@ def test_tables_can_be_written_and_edited_cell_by_cell():
     assert back.tables[0].style.name == "Table Grid"
 
 
-def test_saving_to_a_path_returns_the_path_and_none_from_compat():
+def test_saving_to_a_path_returns_the_path_and_none_from_compat(tmp_path):
     import docviews.compat as compat
     doc = compat.Document()
     doc.add_paragraph("hello")
-    assert doc.save("/tmp/docviews_write_test.docx") is None   # python-docx shape
-    assert open_docx("/tmp/docviews_write_test.docx").text() == "hello"
+    target = tmp_path / "docviews_write_test.docx"
+    assert doc.save(str(target)) is None   # python-docx shape
+    assert open_docx(target).text() == "hello"
 
 
 # ------------------------------------------------------------------- editing
@@ -213,7 +214,7 @@ def test_a_streamed_paragraph_cannot_be_silently_edited():
 
 # -------------------------------------------------------------------- compat
 
-def test_compat_accepts_the_python_docx_calls_in_order():
+def test_compat_accepts_the_python_docx_calls_in_order(tmp_path):
     import docviews.compat as docx
     from docviews.compat.enum import WD_ALIGN_PARAGRAPH
 
@@ -227,8 +228,9 @@ def test_compat_accepts_the_python_docx_calls_in_order():
     table.cell(0, 0).text = "a"
     table.cell(0, 1).text = "b"
     buffer = io.BytesIO()
-    doc.save("/tmp/compat_test.docx")
-    back = docx.Document("/tmp/compat_test.docx")
+    target = tmp_path / "compat_test.docx"
+    doc.save(str(target))
+    back = docx.Document(str(target))
     assert back.text() == "Title\nTotal: 100\na\nb"
     assert back.paragraphs[1].alignment is WD_ALIGN_PARAGRAPH.CENTER
     assert back.paragraphs[1].runs[1].bold is True
@@ -250,13 +252,14 @@ def test_compat_units_match_python_docx_numbers():
     assert Inches(1.5).pt == 108.0
 
 
-def test_reading_and_writing_are_the_same_document():
+def test_reading_and_writing_are_the_same_document(tmp_path):
     """A reader object and a writer object must agree on what the file says."""
     doc = Document.new()
     doc.add_heading("Shared", 1)
     para = doc.add_paragraph("Tracked ")
-    doc.save("/tmp/shared_truth.docx")
-    back = open_docx("/tmp/shared_truth.docx")
+    target = tmp_path / "shared_truth.docx"
+    doc.save(target)
+    back = open_docx(target)
     assert back.text("accepted") == back.text("original")   # nothing revised
     assert back.paragraphs()[0].style.name == "Heading 1"
     assert len(back.parts()) == 1

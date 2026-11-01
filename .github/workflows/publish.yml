@@ -1,0 +1,141 @@
+name: Publish docviews to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: The immutable tag to test and publish
+        required: true
+        type: string
+        default: "v1.0.0"
+      release_version:
+        description: The stable version to publish
+        required: true
+        type: string
+        default: "1.0.0"
+      confirm_release:
+        description: Type PUBLISH docviews 1.0.0 to enable the publish job
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Release tests (Python ${{ matrix.python-version }})
+    if: ${{ github.ref == 'refs/heads/main' && inputs.release_tag == 'v1.0.0' && inputs.release_version == '1.0.0' }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.release_tag }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install test dependencies
+        run: python -m pip install -e ".[dev]"
+      - name: Run full test suite
+        run: python -m pytest -o addopts='' -q
+
+  build:
+    name: Build and validate 1.0.0 distributions
+    if: ${{ github.ref == 'refs/heads/main' && inputs.release_tag == 'v1.0.0' && inputs.release_version == '1.0.0' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.release_tag }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.15"
+      - name: Verify tag and package metadata
+        run: |
+          python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
+          expected = os.environ["RELEASE_VERSION"]
+          tag = os.environ["RELEASE_TAG"]
+          if version != expected or tag != f"v{expected}" or expected != "1.0.0":
+              raise SystemExit(f"version/tag mismatch: metadata={version}, tag={tag}, input={expected}")
+          print(f"Validated {tag} against project version {version}")
+          PY
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+      - name: Check PyPI project name is not already registered
+        run: |
+          python - <<'PY'
+          from urllib.error import HTTPError
+          from urllib.request import urlopen
+
+          url = "https://pypi.org/pypi/docviews/json"
+          try:
+              with urlopen(url, timeout=15) as response:
+                  raise SystemExit(f"PyPI project already exists (HTTP {response.status}); stop and review ownership.")
+          except HTTPError as error:
+              if error.code != 404:
+                  raise
+              print("PyPI returned 404 for docviews at this check; this is not a name reservation.")
+          PY
+      - name: Install packaging tools
+        run: python -m pip install --upgrade build twine
+      - name: Build wheel and source distribution
+        run: python -m build --sdist --wheel
+      - name: Validate distribution metadata and README
+        run: python -m twine check --strict dist/*
+      - name: Smoke-test the built wheel
+        run: |
+          python -m pip install --no-deps --target "$RUNNER_TEMP/docviews-wheel" dist/*.whl
+          PYTHONPATH="$RUNNER_TEMP/docviews-wheel" python - <<'PY'
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+          from docviews import Document, open_docx
+
+          with TemporaryDirectory() as directory:
+              path = Path(directory) / "smoke.docx"
+              document = Document.new()
+              document.add_paragraph("PyPI release smoke test")
+              document.save(path)
+              assert open_docx(path).text() == "PyPI release smoke test"
+          PY
+          PYTHONPATH="$RUNNER_TEMP/docviews-wheel" "$RUNNER_TEMP/docviews-wheel/bin/docviews" --version
+          PYTHONPATH="$RUNNER_TEMP/docviews-wheel" "$RUNNER_TEMP/docviews-wheel/bin/docviews" --help
+      - name: Upload validated distributions for the publish job
+        uses: actions/upload-artifact@v4
+        with:
+          name: docviews-1.0.0-distributions
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish to PyPI (manual, protected)
+    if: ${{ github.ref == 'refs/heads/main' && inputs.release_tag == 'v1.0.0' && inputs.release_version == '1.0.0' && inputs.confirm_release == 'PUBLISH docviews 1.0.0' }}
+    needs: [test, build]
+    runs-on: ubuntu-24.04
+    environment:
+      name: pypi
+      url: https://pypi.org/project/docviews/
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download validated distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: docviews-1.0.0-distributions
+          path: dist
+      - name: Publish with PyPI Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@release/v1

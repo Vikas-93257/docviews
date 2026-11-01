@@ -116,7 +116,10 @@ def _png(data: bytes) -> ImageInfo:
         if kind == b"pHYs" and offset + 8 + 9 <= len(data):
             x_ppu, y_ppu, unit = struct.unpack(">IIB", data[offset + 8:offset + 17])
             if unit == 1 and x_ppu and y_ppu:            # pixels per metre
-                dpi_x, dpi_y = x_ppu * 0.0254, y_ppu * 0.0254
+                # python-docx exposes integer DPI, rounding pixels-per-metre
+                # conversion before calculating the native EMU size.
+                dpi_x = round(x_ppu * 0.0254)
+                dpi_y = round(y_ppu * 0.0254)
             break
         if kind == b"IDAT" or kind == b"IEND":
             break
@@ -177,7 +180,12 @@ def _bmp(data: bytes) -> ImageInfo:
         height = abs(height)
     if not width or not height:
         raise ImageError("BMP reports a zero dimension")
-    return ImageInfo("image/bmp", "bmp", width, height)
+    if len(data) < 46:
+        raise ImageError("BMP truncated before its resolution fields")
+    horz_px_per_meter, vert_px_per_meter = struct.unpack("<ii", data[38:46])
+    dpi_x = int(round(horz_px_per_meter * 0.0254)) if horz_px_per_meter else 96
+    dpi_y = int(round(vert_px_per_meter * 0.0254)) if vert_px_per_meter else 96
+    return ImageInfo("image/bmp", "bmp", width, height, dpi_x, dpi_y)
 
 
 def _tiff(data: bytes) -> ImageInfo:

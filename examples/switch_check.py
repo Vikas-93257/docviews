@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import io
 import sys
+import tempfile
+from pathlib import Path
 
 SHIM = "--shim" in sys.argv
 
@@ -71,10 +73,11 @@ def report(path: str) -> str:
 
 
 def main() -> int:
-    out = "/tmp/switch_check_%s.docx" % ("shim" if SHIM else "python_docx")
+    out = Path(tempfile.gettempdir()) / (
+        f"switch_check_{'shim' if SHIM else 'python_docx'}.docx")
     doc = build()
-    doc.save(out)
-    print(report(out))
+    doc.save(str(out))
+    print(report(str(out)))
     return 0
 
 

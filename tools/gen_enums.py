@@ -2,12 +2,12 @@
 
     python3 tools/gen_enums.py            # needs python-docx installed
 
-The value tables are the OOXML constants themselves (``WD_ALIGN_PARAGRAPH.CENTER
-== 1`` is a fact about the file format, not an implementation). Copying the
-*names, values and XML tokens* is what lets existing code keep writing
-``from docx.enum.text import WD_LINE_SPACING`` after swapping the import to
-``docviews.compat.enum``; no python-docx code is copied, and the generated file
-carries a header saying where the numbers came from.
+The runtime tables copy python-docx 1.2.0's enum names, values, XML tokens, and
+base-class shape so code can keep importing ``WD_LINE_SPACING`` after swapping
+the import to ``docviews.compat.enum``. The documented-only ``MIXED`` member is
+kept as an explicit Office-API-sourced addition because the official
+python-docx enum page lists it but the pinned runtime omits it. No python-docx
+implementation code is copied.
 
 Three things are generated:
 
@@ -41,9 +41,26 @@ STEMS = {"docx.enum.text": "text", "docx.enum.style": "style",
          "docx.enum.section": "section", "docx.enum.table": "table",
          "docx.enum.shape": "shape", "docx.enum.dml": "dml"}
 
-# python-docx marks a member that has no XML token with this string; None is the
-# honest answer here, and it keeps such a member out of the writer's path.
+# Keep python-docx's public sentinel exactly: ``xml_value`` is literally
+# ``"UNMAPPED"`` for these members, even though it is not a writable token.
 UNMAPPED = "UNMAPPED"
+
+# The published python-docx enum page documents MIXED, but v1.2.0's runtime
+# omits it. The Office API defines it as -2. Keep this docs-first addition
+# explicit and source-backed rather than pretending it came from the runtime.
+DOCUMENTED_ONLY_MEMBERS = {
+    "MSO_THEME_COLOR_INDEX": {"MIXED": -2},
+}
+DOCUMENTED_ONLY_MEMBER_DOCSTRINGS = {
+    "MSO_THEME_COLOR_INDEX": {
+        "MIXED": "Indicates multiple theme colors are used.",
+    },
+}
+DOCUMENTED_ONLY_VALUE_SOURCES = {
+    "MSO_THEME_COLOR_INDEX.MIXED": (
+        "https://learn.microsoft.com/en-us/office/vba/api/office.msothemecolorindex"
+    ),
+}
 
 
 def members(cls) -> dict:
@@ -68,8 +85,6 @@ def tokens(cls) -> dict:
     found: dict = {}
     for name, member in getattr(cls, "__members__", {}).items():
         token = getattr(member, "xml_value", None)
-        if token == UNMAPPED:
-            token = None
         if isinstance(token, str):
             found[name] = token
     return found
@@ -125,15 +140,28 @@ def main() -> int:
             if obj.__name__ != name:                # WD_ALIGN_PARAGRAPH -> …
                 aliases[name] = obj.__name__
 
+    # Apply documented members that the pinned runtime omits to both the
+    # canonical class and its import aliases. Their value and provenance stay
+    # separately recorded in the generated data below.
+    for name, additions in DOCUMENTED_ONLY_MEMBERS.items():
+        for enum_name in enums:
+            if aliases.get(enum_name, enum_name) == name:
+                for member, value in additions.items():
+                    if member in enums[enum_name] and enums[enum_name][member] != value:
+                        raise ValueError(
+                            f"{enum_name}.{member} conflicts with runtime value")
+                    enums[enum_name][member] = value
+
     lines = [
         '"""Enum members, by value and by XML token — generated, checked in.',
         "",
-        "Regenerate with ``python3 tools/gen_enums.py``. The names, values and",
-        "XML tokens are the OOXML constants (MIT, python-docx " +
-        _python_docx_version() + "); this file contains no python-docx code.",
+        "Regenerate with ``python3 tools/gen_enums.py``. Runtime members and XML",
+        "tokens come from python-docx " + _python_docx_version() + ". The",
+        "documented-only MIXED member is sourced from the Office API; no",
+        "python-docx implementation code is copied here.",
         '"""',
         "",
-        "# name -> {member: value}, exactly what python-docx exposes",
+        "# name -> {member: value}; runtime values plus documented-only members",
         "ENUMS = {",
     ]
     for name in sorted(enums):
@@ -154,7 +182,27 @@ def main() -> int:
         lines.append("    },")
     lines.append("}")
     lines.append("")
-    lines.append("# name -> which of python-docx's two enum bases it derives from")
+    lines.append("# documented members absent from the pinned runtime")
+    lines.append("DOCUMENTED_ONLY_MEMBERS = {")
+    for name, additions in DOCUMENTED_ONLY_MEMBERS.items():
+        lines.append(f"    {name!r}: {{")
+        for member, value in additions.items():
+            lines.append(f"        {member!r}: {value!r},")
+        lines.append("    },")
+    lines.append("}")
+    lines.append("DOCUMENTED_ONLY_MEMBER_DOCSTRINGS = {")
+    for name, additions in DOCUMENTED_ONLY_MEMBER_DOCSTRINGS.items():
+        lines.append(f"    {name!r}: {{")
+        for member, docstring in additions.items():
+            lines.append(f"        {member!r}: {docstring!r},")
+        lines.append("    },")
+    lines.append("}")
+    lines.append("DOCUMENTED_ONLY_VALUE_SOURCES = {")
+    for name, url in DOCUMENTED_ONLY_VALUE_SOURCES.items():
+        lines.append(f"    {name!r}: {url!r},")
+    lines.append("}")
+    lines.append("")
+    lines.append("# name -> documented base, or PlainEnum for a direct enum.Enum base")
     lines.append("BASES = {")
     for name in sorted(bases):
         lines.append(f"    {name!r}: {bases[name]!r},")

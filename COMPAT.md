@@ -51,7 +51,7 @@ Parameter names, order, kinds, and defaults matched for **78/78** inspected meth
 
 ## Scope limits
 
-This is a bounded inventory of representative object instances, not proof of full documented-public-API parity. Special methods (`__iter__`, `__len__`, and similar) are excluded from the attribute total; XML/OPC plumbing is excluded by design. The signature check does not compare type annotations or return annotations. Signatures unavailable to `inspect.signature` on a runtime are counted separately, not guessed; for example, inherited `int` method `Length.conjugate` is uninspectable on Python 3.9 but exists on both implementations. Neither inventory checks behavior for every documented method, input, or object state. The remaining engineering target is a complete official-API member/signature/behavior matrix.
+This is a bounded inventory of representative object instances, not proof of full documented-public-API parity. Special methods (`__iter__`, `__len__`, and similar) are excluded from the attribute total; XML/OPC plumbing is excluded by design. The signature check does not compare type annotations or return annotations. Signatures unavailable to `inspect.signature` on a runtime are counted separately, not guessed; for example, inherited `int` method `Length.conjugate` is uninspectable on Python 3.9 but exists on both implementations. This sample does not itself check every documented method, input, or object state. The separate complete source-backed assessment is in `API_PARITY_MATRIX.md`: 578 in-scope behaviors are tested matches, with no partial or unassessed in-scope records; six structural/internal entries are excluded by the agreed boundary. This bounded sample report is not itself the full parity assessment.
 
 ## Imports
 
@@ -69,19 +69,11 @@ code imports directly:
 | `docx.enum.base` | 2 | 2 | — | — |
 | `docx.shared` | 10 | 10 | — | — |
 
-471 members compared with python-docx — value, `str()`, `repr()` identical for all 471; 25 members carry a token python-docx leaves unmapped (e.g. `WD_BREAK.PAGE`), 7 carry a different token on purpose (listed below), 0 unexplained
+471 runtime members compared with python-docx — value, `str()`, `repr()`, and `xml_value` match for all 471; 0 token differences and 0 other runtime-member divergences
 
-## Token differences that are deliberate
+## Documented/runtime enum discrepancy
 
-| member | python-docx `xml_value` | here | why |
-|---|---|---|---|
-| `MSO_THEME_COLOR.NOT_THEME_COLOR` | `UNMAPPED` | `None` | python-docx marks it unmapped; no token is written |
-| `MSO_THEME_COLOR_INDEX.NOT_THEME_COLOR` | `UNMAPPED` | `None` | same class, alias |
-| `WD_COLOR.AUTO` | `default` | `none` | same class as `WD_COLOR_INDEX` (an alias) |
-| `WD_COLOR_INDEX.AUTO` | `default` | `none` | `w:highlight` has no `default` value; `none` is what clears it |
-| `WD_LINE_SPACING.DOUBLE` | `UNMAPPED` | `None` | as above |
-| `WD_LINE_SPACING.ONE_POINT_FIVE` | `UNMAPPED` | `None` | as above |
-| `WD_LINE_SPACING.SINGLE` | `UNMAPPED` | `None` | python-docx marks it unmapped; line rule `auto` is what Word writes |
+The published `MSO_THEME_COLOR_INDEX` page lists `MIXED`, but the python-docx 1.2.0 runtime omits it. docviews implements the documented member with value `-2` from the Microsoft Office API reference; its `xml_value` is unmapped. The inventory keeps the runtime absence explicit.
 
 ## Names python-docx does not have
 
@@ -95,7 +87,7 @@ On the same objects, and answering the questions python-docx cannot:
 - **Header**: `text`
 - **Footer**: `text`
 - **InlineShape**: `name`
-- **CoreProperties**: `FIELDS`
+- **CoreProperties**: `DATE_FIELDS`, `FIELDS`, `STRING_FIELDS`
 - **Comment**: `anchor_text`, `anchors`
 - **CommentParagraph**: `delete`, `editable`, `in_table`, `in_textbox`, `index`, `insert_after`, `is_revised`, `kind`, `markup_text`, `original_text`, `part_name`, `refresh`, `revision_chars`, `revision_ids`, `runs_in`, `set_text`, `text_in`, `view`, `views`
 - **Hyperlink**: `paragraph`

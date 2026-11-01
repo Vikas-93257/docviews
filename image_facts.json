@@ -1,0 +1,106 @@
+[
+ {
+  "fixture": "PNG_96",
+  "type": "image/png",
+  "px": [
+   120,
+   60
+  ],
+  "dpi": [
+   96.01,
+   96.01
+  ],
+  "native_in": [
+   1.25,
+   0.625
+  ]
+ },
+ {
+  "fixture": "PNG_RAW",
+  "type": "image/png",
+  "px": [
+   120,
+   60
+  ],
+  "dpi": [
+   72.0,
+   72.0
+  ],
+  "native_in": [
+   1.667,
+   0.833
+  ]
+ },
+ {
+  "fixture": "JPG_300",
+  "type": "image/jpeg",
+  "px": [
+   200,
+   100
+  ],
+  "dpi": [
+   300.0,
+   300.0
+  ],
+  "native_in": [
+   0.667,
+   0.333
+  ]
+ },
+ {
+  "fixture": "GIF",
+  "type": "image/gif",
+  "px": [
+   3,
+   2
+  ],
+  "dpi": [
+   72.0,
+   72.0
+  ],
+  "native_in": [
+   0.042,
+   0.028
+  ]
+ },
+ {
+  "fixture": "BMP",
+  "type": "image/bmp",
+  "px": [
+   4,
+   6
+  ],
+  "dpi": [
+   72.0,
+   72.0
+  ],
+  "native_in": [
+   0.056,
+   0.083
+  ]
+ },
+ {
+  "fixture": "TIFF_300",
+  "type": "image/tiff",
+  "px": [
+   5,
+   7
+  ],
+  "dpi": [
+   300.0,
+   300.0
+  ],
+  "native_in": [
+   0.017,
+   0.023
+  ]
+ },
+ {
+  "fixture": "SVG",
+  "refused": "ImageError"
+ },
+ {
+  "fixture": "JUNK",
+  "refused": "ImageError"
+ }
+]

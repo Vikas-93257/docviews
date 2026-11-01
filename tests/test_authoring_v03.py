@@ -108,11 +108,16 @@ def test_styles_can_be_looked_up_three_ways():
 def test_latent_styles_read_and_write():
     doc = Document.new()
     latent = doc.styles.latent_styles
-    assert latent.default_font_name                    # the template names a font
+    # python-docx's default styles template specifies theme-based fonts instead
+    # of an explicit ``w:rFonts/@w:ascii`` value in ``w:docDefaults``.
+    assert latent.default_font_name == ""
+    latent.default_font_name = "Calibri"
+    assert latent.default_font_name == "Calibri"
+    initial_latent_style_count = len(latent)
     latent.add_latent_style("Callout", ui_priority=10, semi_hidden=True)
     assert "Callout" in latent
     assert latent["Callout"].ui_priority == 10
-    assert len(latent) == 1
+    assert len(latent) == initial_latent_style_count + 1
     raw = doc.to_bytes()
     again = open_docx(raw).styles.latent_styles
     assert again["Callout"].semi_hidden is True

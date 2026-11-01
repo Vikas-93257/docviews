@@ -1,89 +1,57 @@
-"""``docviews.compat.enum`` — python-docx's enums, same objects, same protocol.
+"""``docviews.compat.enum`` — python-docx's enum names and protocol.
 
-``WD_ALIGN_PARAGRAPH.CENTER`` is ``1``, ``int()``/``==``/sorting work on members,
-``str()`` prints ``"CENTER (1)"``, ``list(WD_ALIGN_PARAGRAPH)`` iterates the
-members, ``WD_ALIGN_PARAGRAPH(1)`` looks one up, ``.xml_value`` carries the
-token Word's XML wants, ``.from_xml("center")``/``.to_xml(...)`` go both ways,
-and ``isinstance(member, BaseXmlEnum)`` is true — because the members here *are*
-instances of the same two base classes (see :mod:`.base`), built from the
-generated tables in ``_generated.py``.
+Members of the documented ``BaseEnum`` and ``BaseXmlEnum`` classes preserve
+python-docx's integer values, ``str()``, ``repr()``, XML tokens (including its
+``"UNMAPPED"`` sentinel), and ``from_xml``/``to_xml`` behavior. The deprecated
+``WD_BREAK_TYPE`` is built as a plain :class:`enum.Enum`, like python-docx; its
+writer behavior is implemented explicitly by ``Run.add_break`` rather than by
+adding an ``xml_value`` property that the upstream enum does not have.
 
-The classes are built, not stub objects, so the whole documented python-docx
-enum protocol keeps working: ``__members__``, iteration, ``from_xml``, ``to_xml``.
+The published ``MSO_THEME_COLOR_INDEX`` page also lists ``MIXED`` although
+python-docx 1.2.0 omits it at runtime. This package includes the documented
+member with Office's value ``-2``; the runtime discrepancy is recorded in the
+parity inventory.
 
-``from docx.enum.text import WD_ALIGN_PARAGRAPH`` has a one-word answer too — the
-same names are importable from ``docviews.compat.enum.text``, ``.style``,
-``.section``, ``.table``, ``.shape`` and ``.dml``, in the modules python-docx
-keeps them in.
+``from docx.enum.text import WD_ALIGN_PARAGRAPH`` has a one-word answer too —
+the same names are importable from ``docviews.compat.enum.text``, ``.style``,
+``.section``, ``.table``, ``.shape`` and ``.dml``.
 
-Two deliberate differences from python-docx, both about the file rather than the
-API, and both listed in ``COMPAT.md``:
-
-* ``WD_COLOR_INDEX.AUTO``/``INHERITED`` carry the token ``"none"`` (what
-  ``w:highlight`` accepts) where python-docx says ``"default"``;
-* ``WD_BREAK_TYPE`` / ``WD_BREAK`` carry real tokens (``"page"``, ``"column"``,
-  …) where python-docx's deprecated class has none, so
-  ``run.add_break(WD_BREAK.PAGE)`` writes ``<w:br w:type="page"/>``; the members
-  still print the way python-docx's do (``"WD_BREAK_TYPE.PAGE"``).
-
-An ``ooxml`` property exposes the same token under the core API's name, so a
-compat member can be handed straight to a ``docviews`` setter.
+An ``ooxml`` property is a docviews alias for ``xml_value`` so a compat member
+can be handed to the core writer. It does not replace or normalize the upstream
+XML metadata.
 """
 
 from __future__ import annotations
 
 import enum
 
-from ._generated import ALIASES, BASES, ENUMS, HOME, TOKENS
+from ._generated import (ALIASES, BASES, DOCUMENTED_ONLY_MEMBER_DOCSTRINGS,
+                        ENUMS, HOME, TOKENS)
 from .base import BaseEnum, BaseXmlEnum, PlainXmlEnum
 
 __all__ = sorted(set(ENUMS) | set(ALIASES)
                  | {"BaseEnum", "BaseXmlEnum", "PlainXmlEnum"})
 
-# Members whose token we do not take from python-docx. Keyed by the canonical
-# class name; every entry is a judgement about what the file wants, and each one
-# is checked by tests/test_enums.py.
-OVERRIDES = {
-    # python-docx's legacy WD_BREAK_TYPE maps no XML value; these are the
-    # tokens <w:br w:type="…"/> accepts.
-    "WD_BREAK_TYPE": {2: "nextPage", 3: "continuous", 4: "evenPage",
-                      5: "oddPage", 6: "textWrapping", 7: "page",
-                      8: "column", 9: "lineClearLeft", 10: "lineClearRight",
-                      11: "lineClearAll"},
-    # "default" is python-docx's word for "auto"; w:highlight wants "none".
-    "WD_COLOR_INDEX": {-1: "none", 0: "none"},
-    "WD_UNDERLINE": {-1: "none"},
-}
-
-# the old name of OVERRIDES, kept because scripts import it
-OOXML = OVERRIDES
-
 # A class is built once, under python-docx's own name for it; names python-docx
-# re-exports are pointed at the same class afterwards, so identity holds
-# (``WD_ALIGN_PARAGRAPH is WD_PARAGRAPH_ALIGNMENT``).
+# re-exports point to that same class afterwards (``WD_BREAK is WD_BREAK_TYPE``).
 CANONICAL = {name: ALIASES.get(name, name) for name in ENUMS}
 
 
-def _token(cls_name: str, member: str, value) -> str | None:
-    overrides = OVERRIDES.get(cls_name) or {}
-    if isinstance(value, int) and value in overrides:
-        return overrides[value]
+def _token(cls_name: str, member: str) -> str | None:
+    """Return python-docx's exact ``xml_value``, including ``UNMAPPED``."""
     return (TOKENS.get(cls_name) or {}).get(member)
 
 
 def _build(cls_name: str, values: dict) -> type:
-    """A real enum class with python-docx's members, values and bases."""
-    # python-docx's own base — unless we carry tokens for the class, in which
-    # case the members need somewhere to keep them (its deprecated
-    # WD_BREAK_TYPE maps no XML value of its own).
+    """A real enum class with python-docx's members, values and base shape."""
     kind = BASES.get(cls_name)
     if kind == "PlainEnum":
-        base = PlainXmlEnum
-    elif kind == "BaseXmlEnum" or OVERRIDES.get(cls_name) \
-            or TOKENS.get(cls_name):
+        base = enum.Enum
+    elif kind == "BaseXmlEnum":
         base = BaseXmlEnum
     else:
         base = BaseEnum
+
     prepared = enum.EnumMeta.__prepare__(cls_name, (base,))
     prepared["__module__"] = __name__
     prepared["__qualname__"] = cls_name
@@ -92,9 +60,14 @@ def _build(cls_name: str, values: dict) -> type:
         if not isinstance(value, int):
             raise TypeError(f"{cls_name}.{member}: python-docx value {value!r} "
                             f"is not an int")
-        token = _token(cls_name, member, value)
-        prepared[member] = ((value, token, "") if issubclass(base, BaseXmlEnum)
-                            else (value, ""))
+        docstring = (DOCUMENTED_ONLY_MEMBER_DOCSTRINGS.get(cls_name, {})
+                     .get(member, ""))
+        if base is BaseXmlEnum:
+            prepared[member] = (value, _token(cls_name, member), docstring)
+        elif base is enum.Enum:
+            prepared[member] = value
+        else:
+            prepared[member] = (value, docstring)
     return enum.EnumMeta(cls_name, (base,), prepared)
 
 

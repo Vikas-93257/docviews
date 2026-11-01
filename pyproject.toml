@@ -4,16 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "docviews"
-version = "0.3.0a1"
+version = "1.0.0"
 authors = [{ name = "Vikas Maurya" }]
 description = "Read .docx in original, accepted, and markup views; author common content with zero runtime dependencies."
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 keywords = ["docx", "ooxml", "word", "tracked-changes", "revisions", "footnotes", "comments", "python-docx"]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Developers",
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
@@ -49,6 +49,9 @@ package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+docviews = ["default_styles.xml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

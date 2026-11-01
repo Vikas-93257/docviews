@@ -1,10 +1,12 @@
 # Migrating from python-docx
 
-`docviews.compat` is a bridge for a **tested subset** of python-docx's documented
-API. It is useful for a controlled pilot; it is not a drop-in `docx` package
-and does not guarantee identical behavior for every application. The project
-is Alpha. Read this guide and test your own files before switching a production
-workflow.
+`docviews.compat` implements python-docx 1.2.0's **documented public API** within
+the agreed boundary; the source-backed parity matrix records 578 tested
+behavior matches and six structural/internal scope exclusions. It is not a
+top-level `docx` package: redirect imports to `docviews.compat`, and code that
+depends on undocumented lxml/OOXML/OPC internals remains out of scope. Stable
+release metadata `1.0.0` is selected but has not been published. Read this guide
+and test your application-specific workflows before switching production use.
 
 ## Import changes
 
@@ -64,13 +66,15 @@ body, a header, or a footer. The current regressions live in
   processes.
 - Compare generated documents after reopening them with the application that
   consumes them (at least python-docx 1.2.0; ideally Word or LibreOffice too).
-- Check any code that uses enum identity, error text, XML edge cases, or
-  undocumented methods. `COMPAT.md` records the current bounded audit:
-  **276/276** sampled public names, **78/78** sampled callable parameter shapes
-  on Python 3.13, and **471/471** enum members. These are inventory and selected
-  signature checks, not full documented-API behavioral equivalence.
-- For a low-risk rollout, keep python-docx available, pilot docviews on a
-  non-critical path, and retain an easy rollback to the original imports.
+- The completed documented-public-API comparison is in
+  `API_PARITY_MATRIX.md`: 578 tested behavior matches, no partial or
+  unassessed in-scope rows, and six structural/internal exclusions. `COMPAT.md`
+  remains a separate bounded object-sample audit (276/276 sampled names,
+  78/78 sampled call shapes, and 471/471 runtime enum members).
+- For a production migration, still run your application's integration suite,
+  validate its actual DOCX inputs/outputs, and retain a rollback path. API
+  parity does not prove suitability for workflows that depend on private
+  internals or capabilities outside python-docx's documented API.
 
 ## Not covered by the compatibility bridge
 
@@ -90,14 +94,12 @@ support.
 
 ## Release and support status
 
-At the 2026-10-31 release-readiness check, the selected Alpha candidate is
-version `0.3.0a1`; no PyPI release has been made. The public GitHub repository
-is [Vikas-93257/docviews](https://github.com/Vikas-93257/docviews), and source
-is on `main`. The [issue tracker](https://github.com/Vikas-93257/docviews/issues)
-is open. Hosted Actions run #1 passed all seven Python jobs and the
-package-validation job; run #2 passed after updating to Node 24-compatible
-actions and pinning Ubuntu 24.04. The full suite passed **149 tests on each
-Python version from 3.9 through 3.15** in the local matrix; after selecting
-`0.3.0a1`, it was rerun on Python 3.9 and 3.15. The full documented-API
-behavior matrix remains unfinished, and there is no production SLA or support
-commitment.
+Stable version `1.0.0` and the `Production/Stable` classifier are selected after
+completion of the documented-public-API parity assessment. The version has not
+been uploaded to PyPI; release artifacts are local and publication requires
+explicit maintainer approval. The repository URL is
+[github.com/Vikas-93257/docviews](https://github.com/Vikas-93257/docviews), and
+the [issue tracker](https://github.com/Vikas-93257/docviews/issues) is the
+public support channel. No production SLA or commercial support commitment is
+made. See `RELEASE_READINESS.md` for the remaining release approval steps and
+artifact checksums.

@@ -1,42 +1,44 @@
 # Changelog
 
-## 0.3.0a1 — Alpha release candidate (unpublished at the 2026-10-31 check)
+## 1.0.0 — Stable release metadata selected (2026-11-01; not published)
 
-This candidate combines the v0.3 authoring work with the compatibility and
-release-readiness refinements completed through 2026-10-31:
+The first stable version is selected after completing the documented-public-API
+parity assessment against python-docx 1.2.0. The package metadata now uses
+version `1.0.0` and the `Production/Stable` classifier. This is a local release
+candidate only: no PyPI upload has been made, and publication requires explicit
+maintainer approval.
 
-- A `docviews.compat` bridge for a sampled subset of python-docx 1.2.0's
-documented object and enum APIs. The latest audit records **276/276** sampled
-public attribute names, **78/78** sampled callable parameter shapes on Python
-3.13, and **471/471** enum members. These bounded counts are not full documented-
-API behavioral parity and do not include the lxml/OOXML/OPC internals.
-- Compatibility refinements for latent styles, run-content iteration and
-rendered page breaks, Drawing/Image access, `RGBColor`, and python-docx-shaped
-length-unit constructors and signatures.
-- Authoring for paragraphs, runs, styles, tables, sections, headers/footers,
-comments, core properties, and inline pictures, with unedited package parts
-preserved byte-for-byte.
-- `Run.add_picture()` support in the main document, header, and footer parts;
-relationship IDs are reserved per source part and repeated images get distinct
-media names. Keyword calls and stream-save behavior have focused regressions.
-- Reading and auditing for original, accepted, and markup views, revisions,
-comments and anchors, and text-bearing package parts.
-- The twelve documented python-docx recipe transcripts match after save/reopen.
-The full suite passed **149 tests on each Python version from 3.9 through
-3.15** with python-docx 1.2.0 as the optional interoperability baseline. After
-selecting metadata version `0.3.0a1`, the full suite was rerun on Python 3.9 and
-3.15 (**149 passed on each**); fresh Python 3.15 wheel and sdist installs also
-passed DOCX and CLI smoke checks.
-- The five-run write benchmark shows docviews faster build-plus-save for the
-measured 500- and 5,000-paragraph workloads; python-docx remains faster at
-save-only for the 5,000-paragraph case. See `COMPARE.md` for timings and limits.
-- An external smoke set of eight public-sector DOCX files from GOV.UK pages
-whose footers state the Open Government Licence v3.0 (subject to its
-third-party-rights exclusions) is documented separately from the fixture
-corpus in `real_world_eval/REPORT.md`.
+- The source-backed API matrix contains **584 documented records**: **578
+  in-scope behavior matches**, **0 partial or unassessed in-scope records**, and
+  **6 structural/internal exclusions** under the agreed boundary. Availability,
+  callable shape, writability, enum, and import-path checks are recorded in
+  `API_PARITY_MATRIX.md`.
+- All **471 runtime enum members** match python-docx 1.2.0. The documented-only
+  `MSO_THEME_COLOR_INDEX.MIXED` is implemented with Microsoft's published value
+  `-2`; it has no XML token mapping because the upstream runtime omits it.
+- The full **239-test suite** passed on CPython 3.9.25, 3.10.22, 3.11.18,
+  3.12.16, 3.13.16, 3.14.10, and 3.15.2. Each run reported one upstream
+  python-docx style-ID deprecation warning.
+- The twelve selected python-docx documentation recipes produce matching
+  save-and-reopen transcripts.
+- The Sphinx 9.2.0 reference-docs build succeeded with one explicitly accepted
+  upstream docutils warning at `research/python-docx-v1.2.0/docs/user/comments.rst:134`.
+  The pinned upstream source was not changed.
+- The wheel and source distribution were rebuilt after the metadata change,
+  passed strict Twine checks, installed in clean Python 3.15.2 environments,
+  and passed DOCX create/save/reopen and CLI smoke tests. Local artifacts and
+  checksums are in `release_artifacts/1.0.0/`.
 
-This remains an Alpha candidate, not a general drop-in replacement or a stable
-1.0 release. Full documented-public-API parity is still the selected engineering
-target, and the candidate has not been published as of the date above. See
-`README.md`, `COMPARE.md`, `COMPAT.md`, and `MIGRATION.md` for usage,
-measurements, compatibility scope, and migration limitations.
+The parity claim is limited to the documented public API of python-docx 1.2.0.
+Undocumented lxml/OOXML/OPC internals and malformed states outside the
+published contract remain out of scope. No PyPI upload is authorized by this
+readiness work.
+
+---
+
+## 0.3.0a1 — Historical unpublished alpha checkpoint (2026-10-31)
+
+`0.3.0a1` was an internal checkpoint used before the documented-public-API
+parity work was complete. It was never published and is superseded by the
+`1.0.0` stable metadata selection. Its temporary local archives were removed
+after the final stable artifacts were validated.

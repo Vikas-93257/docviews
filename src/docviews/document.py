@@ -325,6 +325,17 @@ class Document:
         self._extra_rels.append((rel_id, kind, target))
         return rel_id
 
+    def _drop_rel(self, rel_id: str) -> None:
+        """Drop a main-document relationship, including one reserved in-memory."""
+        if not rel_id:
+            return
+        for index, relation in enumerate(self._extra_rels):
+            if relation[0] == rel_id:
+                del self._extra_rels[index]
+                self._reserved_rels.discard(rel_id)
+                return
+        self._removed_rels.add(rel_id)
+
     def _reserve_rel_for_part(self, part_name: str, kind: str,
                               target: str) -> str:
         """Reserve a relationship on a story part such as a header or footer."""
@@ -782,7 +793,7 @@ class Document:
         element = ET.SubElement(root, self._w("comment"))
         for attribute, value in (("id", str(comment_id)), ("author", author),
                                  ("initials", initials), ("date", stamp)):
-            if value or attribute in ("id", "author"):
+            if value is not None or attribute in ("id", "author"):
                 element.set(self._w(attribute), value)
         paragraph = ET.SubElement(element, self._w("p"))
         properties = ET.SubElement(paragraph, self._w("pPr"))
@@ -862,33 +873,50 @@ class Document:
         return self._package.part(self._package.main_part).root
 
     def _mark_comment_range(self, comment_id: int, first, last):
-        """Write the range markers around ``first`` … ``last`` (inclusive).
+        """Write range markers around the first and last run, across paragraphs.
 
-        Returns ``(part name, paragraph index, start, end)`` — where in the
-        document the range sits, which is what a reader of the file would work
-        out from the markers.
+        The start and end markers are siblings of their associated runs, which
+        can be in the same paragraph or in different paragraphs of one part.
+        Returns a best-effort flat offset span for docviews' richer Anchor value.
         """
         first_element, last_element = first._element, last._element
-        target = None
-        for part_name, root in self._live_roots().items():
-            for element in root.iter():
-                if not isinstance(element.tag, str) or _tag(element) != "p":
-                    continue
-                children = list(element)
-                if any(child is first_element for child in children) and \
-                        any(child is last_element for child in children):
-                    target = (part_name, element)
-                    break
-            if target is not None:
-                break
-        if target is None:
-            raise DocxError(
-                "the runs being commented are not in this document's body, "
-                "header or footer")
-        part_name, paragraph = target
-        children = list(paragraph)
-        start_index = next(i for i, c in enumerate(children) if c is first_element)
-        end_index = next(i for i, c in enumerate(children) if c is last_element)
+
+        def locate(target):
+            for part_name, root in self._live_roots().items():
+                for paragraph in root.iter():
+                    if not isinstance(paragraph.tag, str) or _tag(paragraph) != "p":
+                        continue
+                    for parent in paragraph.iter():
+                        for child in parent:
+                            if child is target:
+                                return part_name, root, paragraph, parent
+            return None
+
+        first_location = locate(first_element)
+        last_location = locate(last_element)
+        if first_location is None or last_location is None:
+            raise DocxError("the runs being commented are not in a document story")
+
+        part_name, root, first_paragraph, first_parent = first_location
+        last_part, last_root, last_paragraph, end_parent = last_location
+        start_children = list(first_paragraph)
+        end_children = list(last_paragraph)
+        start_offset = self._offset(start_children, first_element)
+        end_offset = self._offset(end_children, last_element, end_of=True)
+        if part_name == last_part and first_paragraph is not last_paragraph:
+            paragraphs = [element for element in root.iter()
+                          if isinstance(element.tag, str) and _tag(element) == "p"]
+            first_index = paragraphs.index(first_paragraph)
+            last_index = paragraphs.index(last_paragraph)
+            first_length = sum(self._run_text(child) for child in start_children)
+            middle_length = sum(
+                self._run_text(child)
+                for paragraph in paragraphs[first_index + 1:last_index]
+                for child in paragraph
+            )
+            end_offset = start_offset + max(0, first_length - start_offset) \
+                + middle_length + end_offset
+
         start = ET.Element(self._w("commentRangeStart"))
         start.set(self._w("id"), str(comment_id))
         end = ET.Element(self._w("commentRangeEnd"))
@@ -899,13 +927,18 @@ class Document:
         style.set(self._w("val"), "CommentReference")
         anchor = ET.SubElement(reference, self._w("commentReference"))
         anchor.set(self._w("id"), str(comment_id))
-        paragraph[:] = (children[:start_index] + [start]
-                        + children[start_index:end_index + 1]
-                        + [end, reference] + children[end_index + 1:])
+
+        # Recompute the last sibling index after inserting the start marker,
+        # which matters when both runs share one parent.
+        first_parent.insert(list(first_parent).index(first_element), start)
+        end_parent.insert(list(end_parent).index(last_element) + 1, end)
+        end_parent.insert(list(end_parent).index(end) + 1, reference)
         self._mark_changed(part_name)
-        return (part_name, self._paragraph_index(paragraph),
-                self._offset(children, first_element),
-                self._offset(children, last_element, end_of=True))
+        if last_part != part_name:
+            self._mark_changed(last_part)
+            return None
+        return (part_name, self._paragraph_index(first_paragraph),
+                start_offset, end_offset)
 
     def _next_docpr_id(self) -> int:
         """``wp:docPr id`` must be unique across all story parts."""
@@ -1049,7 +1082,8 @@ class Document:
                              extra_rels=self._extra_rels,
                              extra_content_types=self._extra_content_types,
                              extra_defaults=self._extra_defaults,
-                             package_rels=self._extra_package_rels)
+                             package_rels=self._extra_package_rels,
+                             removed_rels=tuple(sorted(self._removed_rels)))
 
     def save(self, path: Optional[Union[str, Path]] = None) -> str:
         """Write the package back out. Returns the path written.
@@ -1144,6 +1178,7 @@ class Document:
         self._extra_content_types: List[tuple] = []  # (part name, content type)
         self._extra_defaults: List[tuple] = []      # (extension, content type)
         self._reserved_rels: set = set()            # relationship ids spoken for
+        self._removed_rels: set = set()             # original main-part rels to drop
         self._edited_roots: Dict[str, ET.Element] = {}   # parsed roots we may write
         self._pending_shapes: List[InlineShape] = []
         self._para_cache = None                     # (id(root), len, count, element)

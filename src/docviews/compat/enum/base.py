@@ -1,14 +1,13 @@
-"""python-docx's enum base classes, same contract, our own implementation.
+"""python-docx's enum base classes, implemented locally.
 
-python-docx numbers its enum members the way the MS API does and hangs the
-*Word* XML attribute value off the member as ``xml_value``; its two base classes
-are part of the documented API (``docx.enum.base``), and code does reach for
-them — ``isinstance(member, BaseXmlEnum)``, ``WD_ALIGN_PARAGRAPH.from_xml(...)``,
-``SomeEnum.to_xml(value)``. All of that works on the members in
-``docviews.compat.enum``, because those members are instances of these classes.
+python-docx numbers its enum members the way the MS API does and stores the
+Word XML attribute value as ``xml_value``. Its two documented bases are part of
+the public API (``docx.enum.base``), and code may use ``isinstance`` or call
+``from_xml``/``to_xml``. ``ooxml`` is a docviews alias for ``xml_value``.
 
-``ooxml`` is ours: the same token, under the name the core API uses for it, so a
-compat member can be handed straight to a docviews setter.
+Legacy python-docx enums that derive directly from :class:`enum.Enum`, notably
+``WD_BREAK_TYPE``, are built directly on that standard-library base. They have
+no ``xml_value`` or integer behavior.
 """
 
 from __future__ import annotations
@@ -72,12 +71,7 @@ class BaseXmlEnum(int, enum.Enum):
 
 
 class PlainXmlEnum(BaseXmlEnum):
-    """A deprecated python-docx enum: standard-library ``str``, tokens kept.
-
-    python-docx's ``WD_BREAK_TYPE`` derives from neither documented base, so its
-    members print ``"WD_BREAK_TYPE.PAGE"``. Ours do too — and they also carry the
-    token, which is what ``run.add_break(WD_BREAK.PAGE)`` writes.
-    """
+    """Legacy docviews helper: an integer XML enum with standard Enum ``str``."""
 
     def __str__(self) -> str:
         return f"{type(self).__name__}.{self.name}"

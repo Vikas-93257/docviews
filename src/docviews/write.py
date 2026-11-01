@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import re
 import zipfile
+from importlib.resources import files
 from io import BytesIO
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -45,9 +46,10 @@ def token(value) -> Optional[str]:
     """
     if value is None:
         return None
-    ooxml = getattr(value, "ooxml", None)
-    if isinstance(ooxml, str) and ooxml:
-        return ooxml
+    missing = object()
+    ooxml = getattr(value, "ooxml", missing)
+    if ooxml is not missing:
+        return ooxml if isinstance(ooxml, str) and ooxml else None
     if isinstance(value, str):
         return value
     return str(getattr(value, "value", value))
@@ -419,98 +421,21 @@ def _document_rels(rel_base: str) -> bytes:
 
 
 def styles_xml(ns: Optional[Dict[str, str]] = None) -> bytes:
-    """A small, valid style set: what `add_heading`/`add_list_item` need."""
-    ns = ns or _NS
-    w = ns["w"]
-    heading = ""
-    for level, size, spacing in ((1, 32, 240), (2, 26, 160), (3, 24, 120),
-                                 (4, 22, 80), (5, 22, 80), (6, 22, 80)):
-        heading += (
-            f'<w:style w:type="paragraph" w:styleId="Heading{level}">'
-            f'<w:name w:val="heading {level}"/><w:basedOn w:val="Normal"/>'
-            f'<w:next w:val="Normal"/>'
-            f'<w:pPr><w:keepNext/><w:keepLines/>'
-            f'<w:spacing w:before="240" w:after="{spacing}"/>'
-            f'<w:outlineLvl w:val="{level - 1}"/></w:pPr>'
-            f'<w:rPr><w:rFonts w:ascii="Calibri Light" w:hAnsi="Calibri Light"/>'
-            f'<w:b/><w:color w:val="2F5496"/><w:sz w:val="{size}"/>'
-            f'<w:szCs w:val="{size}"/></w:rPr></w:style>')
-    return (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        f'<w:styles xmlns:w="{w}"><w:docDefaults>'
-        '<w:rPrDefault><w:rPr>'
-        '<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="Calibri" w:cs="Calibri"/>'
-        '<w:sz w:val="22"/><w:szCs w:val="22"/>'
-        '</w:rPr></w:rPrDefault>'
-        '<w:pPrDefault><w:pPr><w:spacing w:after="160" w:line="259" w:lineRule="auto"/></w:pPr></w:pPrDefault>'
-        '</w:docDefaults>'
-        '<w:style w:type="paragraph" w:default="1" w:styleId="Normal">'
-        '<w:name w:val="Normal"/></w:style>'
-        '<w:style w:type="paragraph" w:styleId="Title">'
-        '<w:name w:val="Title"/><w:basedOn w:val="Normal"/>'
-        '<w:pPr><w:spacing w:after="80"/></w:pPr>'
-        '<w:rPr><w:rFonts w:ascii="Calibri Light" w:hAnsi="Calibri Light"/>'
-        '<w:sz w:val="56"/><w:szCs w:val="56"/></w:rPr></w:style>'
-        '<w:style w:type="paragraph" w:styleId="Subtitle">'
-        '<w:name w:val="Subtitle"/><w:basedOn w:val="Normal"/>'
-        '<w:pPr><w:spacing w:after="160"/></w:pPr>'
-        '<w:rPr><w:color w:val="595959"/><w:sz w:val="28"/></w:rPr></w:style>'
-        + heading +
-        '<w:style w:type="paragraph" w:styleId="ListBullet">'
-        '<w:name w:val="List Bullet"/><w:basedOn w:val="Normal"/>'
-        '<w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="1"/></w:numPr>'
-        '<w:ind w:left="720"/><w:contextualSpacing/></w:pPr></w:style>'
-        '<w:style w:type="paragraph" w:styleId="ListNumber">'
-        '<w:name w:val="List Number"/><w:basedOn w:val="Normal"/>'
-        '<w:pPr><w:numPr><w:ilvl w:val="0"/><w:numId w:val="2"/></w:numPr>'
-        '<w:ind w:left="720"/><w:contextualSpacing/></w:pPr></w:style>'
-        '<w:style w:type="paragraph" w:styleId="Quote">'
-        '<w:name w:val="Quote"/><w:basedOn w:val="Normal"/>'
-        '<w:pPr><w:ind w:left="720" w:right="720"/></w:pPr>'
-        '<w:rPr><w:i/><w:color w:val="404040"/></w:rPr></w:style>'
-        '<w:style w:type="character" w:default="1" w:styleId="DefaultParagraphFont">'
-        '<w:name w:val="Default Paragraph Font"/>'
-        '<w:uiPriority w:val="1"/><w:semiHidden/><w:unhideWhenUsed/></w:style>'
-        '<w:style w:type="character" w:styleId="Emphasis">'
-        '<w:name w:val="Emphasis"/><w:basedOn w:val="DefaultParagraphFont"/>'
-        '<w:rPr><w:i/><w:iCs/></w:rPr></w:style>'
-        '<w:style w:type="character" w:styleId="Strong">'
-        '<w:name w:val="Strong"/><w:basedOn w:val="DefaultParagraphFont"/>'
-        '<w:rPr><w:b/><w:bCs/></w:rPr></w:style>'
-        '<w:style w:type="character" w:styleId="SubtleEmphasis">'
-        '<w:name w:val="Subtle Emphasis"/><w:basedOn w:val="DefaultParagraphFont"/>'
-        '<w:rPr><w:i/><w:color w:val="404040"/></w:rPr></w:style>'
-        '<w:style w:type="paragraph" w:styleId="CommentText">'
-        '<w:name w:val="Comment Text"/><w:basedOn w:val="Normal"/>'
-        '<w:rPr><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:style>'
-        # Word's own header/footer styles: a header part created by Word (and by
-        # python-docx) starts with an empty paragraph carrying one of these
-        '<w:style w:type="paragraph" w:styleId="Header">'
-        '<w:name w:val="header"/><w:basedOn w:val="Normal"/>'
-        '<w:pPr><w:tabs><w:tab w:val="center" w:pos="4680"/>'
-        '<w:tab w:val="right" w:pos="9360"/></w:tabs>'
-        '<w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr>'
-        '<w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:style>'
-        '<w:style w:type="paragraph" w:styleId="Footer">'
-        '<w:name w:val="footer"/><w:basedOn w:val="Normal"/>'
-        '<w:pPr><w:tabs><w:tab w:val="center" w:pos="4680"/>'
-        '<w:tab w:val="right" w:pos="9360"/></w:tabs>'
-        '<w:spacing w:after="0" w:line="240" w:lineRule="auto"/></w:pPr>'
-        '<w:rPr><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:style>'
-        '<w:style w:type="character" w:styleId="CommentReference">'
-        '<w:name w:val="Comment Reference"/>'
-        '<w:rPr><w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr></w:style>'
+    """Return the full python-docx 1.2.0 default style part.
 
-        '<w:style w:type="table" w:styleId="TableGrid">'
-        '<w:name w:val="Table Grid"/><w:basedOn w:val="TableNormal"/>'
-        '<w:tblPr><w:tblBorders>'
-        + "".join(f'<w:{side} w:val="single" w:sz="4" w:space="0" w:color="auto"/>'
-                  for side in ("top", "left", "bottom", "right", "insideH", "insideV"))
-        + '</w:tblBorders></w:tblPr></w:style>'
-        '<w:style w:type="table" w:default="1" w:styleId="TableNormal">'
-        '<w:name w:val="Normal Table"/></w:style>'
-        '</w:styles>'
-    ).encode()
+    Keeping the complete template style collection gives new documents the
+    same built-in styles, defaults, and latent-style metadata as python-docx.
+    The packaged XML is static, so loading it adds no runtime dependency. Only
+    the core OOXML namespace URIs are rewritten for strict-conformance output.
+    """
+    ns = ns or _NS
+    xml = files("docviews").joinpath("default_styles.xml").read_bytes()
+    for prefix in ("w", "r", "wp"):
+        old_uri = TRANSITIONAL.get(prefix)
+        new_uri = ns.get(prefix, old_uri)
+        if old_uri and new_uri and old_uri != new_uri:
+            xml = xml.replace(old_uri.encode(), new_uri.encode())
+    return xml
 
 
 _BUILTIN_STYLE_NAMES = {
@@ -520,7 +445,7 @@ _BUILTIN_STYLE_NAMES = {
     "TableGrid": "Table Grid", "TableNormal": "Normal Table",
     "Emphasis": "Emphasis", "Strong": "Strong",
     "SubtleEmphasis": "Subtle Emphasis",
-    "DefaultParagraphFont": "Default Paragraph Font",
+    "DefaultParagraphFont": "Default Paragraph Font", "NoList": "No List",
     "Header": "Header", "Footer": "Footer",
 }
 
@@ -626,6 +551,17 @@ def ensure_default_content_type(xml: bytes, extension: str,
     return serialize(root, xml)
 
 
+def remove_relationship(xml: bytes, rel_id: str) -> bytes:
+    """Remove one relationship id while preserving the rest of its ``.rels``."""
+    root = parse_xml(xml)
+    removed = False
+    for element in list(root):
+        if element.get("Id") == rel_id:
+            root.remove(element)
+            removed = True
+    return serialize(root, xml) if removed else xml
+
+
 def ensure_relationship(xml: bytes, rel_base: str, kind: str, target: str,
                         rel_id: str = "") -> bytes:
     """Add a relationship to a .rels part.
@@ -663,10 +599,11 @@ def ensure_relationship(xml: bytes, rel_base: str, kind: str, target: str,
 
 def build_package(package: Package, replacements: Dict[str, bytes],
                   additions: Dict[str, bytes],
-                  extra_rels: Sequence[Tuple[str, str, str, str]] = (),
+                  extra_rels: Sequence[Tuple[str, str, str]] = (),
                   extra_content_types: Sequence[Tuple[str, str, bool]] = (),
                   extra_defaults: Sequence[Tuple[str, str]] = (),
-                  package_rels: Sequence[Tuple[str, str, str]] = ()) -> bytes:
+                  package_rels: Sequence[Tuple[str, str, str]] = (),
+                  removed_rels: Sequence[str] = ()) -> bytes:
     """Copy the original package, replacing only what changed.
 
     ``replacements`` are parts that already existed; ``additions`` are new ones.
@@ -676,7 +613,8 @@ def build_package(package: Package, replacements: Dict[str, bytes],
     ``extra_content_types`` are ``(part name, content type, is_override)``
     triples and ``extra_defaults`` are ``(extension, content type)`` pairs —
     stated by the caller, because only the caller knows whether a new part is a
-    header, an image, or something else entirely.
+    header, an image, or something else entirely. ``removed_rels`` are ids to
+    drop from the main document part (used when a header/footer is unlinked).
     """
     names = list(package.names())
     rel_base = _rel_base(package.strict)
@@ -695,6 +633,8 @@ def build_package(package: Package, replacements: Dict[str, bytes],
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
             "</Relationships>").encode()
+    for rel_id in removed_rels:
+        rels = remove_relationship(rels, rel_id)
 
     for extension, content_type in extra_defaults:
         content_types = ensure_default_content_type(content_types, extension,
@@ -885,7 +825,7 @@ class Run:
                                           run=self)
 
     # ------------------------------------------------------------------ editing
-    def mark_comment_range(self, last_run: "Run",
+    def mark_comment_range(self, last_run: Run,
                            comment_id: int) -> None:
         """Mark the runs from this one to ``last_run`` for a comment.
 
@@ -918,11 +858,45 @@ class Run:
             if break_type is not None:
                 raise TypeError("pass either break_type or kind, not both")
             break_type = kind
-        name = str(getattr(break_type, "name", "") or
-                   getattr(break_type, "value", "") or "")
+        names_by_value = {
+            6: "LINE", 7: "PAGE", 8: "COLUMN", 9: "LINE_CLEAR_LEFT",
+            10: "LINE_CLEAR_RIGHT", 11: "LINE_CLEAR_ALL",
+        }
+        names_by_token = {
+            "TEXTWRAPPING": "LINE", "LINE": "LINE", "PAGE": "PAGE",
+            "COLUMN": "COLUMN",
+            "LINECLEARLEFT": "LINE_CLEAR_LEFT",
+            "LINECLEARRIGHT": "LINE_CLEAR_RIGHT",
+            "LINECLEARALL": "LINE_CLEAR_ALL",
+        }
+        if break_type is None:
+            name = "LINE"
+        else:
+            name = getattr(break_type, "name", None)
+            if name is None:
+                value = getattr(break_type, "value", break_type)
+                try:
+                    name = names_by_value.get(int(value))
+                except (TypeError, ValueError):
+                    name = None
+                if name is None:
+                    name = names_by_token.get(str(value).replace("_", "").upper())
+        break_specs = {
+            "LINE": (None, None),
+            "PAGE": ("page", None),
+            "COLUMN": ("column", None),
+            "LINE_CLEAR_LEFT": (None, "left"),
+            "LINE_CLEAR_RIGHT": (None, "right"),
+            "LINE_CLEAR_ALL": (None, "all"),
+        }
+        if name not in break_specs:
+            raise KeyError(break_type)
+        break_type_name, clear = break_specs[name]
         element = ET.SubElement(self._element, f"{{{self._w_ns}}}br")
-        if "PAGE" in name.upper() or name == "7":
-            element.set(f"{{{self._w_ns}}}type", "page")
+        if break_type_name is not None:
+            element.set(f"{{{self._w_ns}}}type", break_type_name)
+        if clear is not None:
+            element.set(f"{{{self._w_ns}}}clear", clear)
 
     def clear(self) -> None:
         """Take this run back to nothing: no text, no formatting."""
@@ -997,25 +971,36 @@ class Run:
         for child in rpr:
             if _local(child) == "u":
                 value = child.get(f"{{{self._w_ns}}}val")
-                if value in (None, "none"):
-                    return None
-                return True if value == "single" else value
+                if value in (None, "single"):
+                    return True
+                if value == "none":
+                    return False
+                return value
         return None
 
     @underline.setter
     def underline(self, value) -> None:
-        rpr = self._rpr(create=bool(value))
+        rpr = self._rpr(create=value is not None)
         if rpr is None:
             return
         for child in list(rpr):
             if _local(child) == "u":
                 rpr.remove(child)
-        if not value:
+        if value is None:
             return
         element = ET.Element(f"{{{self._w_ns}}}u")
-        element.set(f"{{{self._w_ns}}}val",
-                    "single" if value is True else token(value))
-        rpr.append(element)
+        if value is True:
+            underline = "single"
+        elif value is False:
+            underline = "none"
+        else:
+            underline = token(value)
+            if underline is None and hasattr(value, "xml_value"):
+                # Match BaseXmlEnum.to_xml(): INHERITED has no representation
+                # and must not degrade into an invalid numeric XML value.
+                underline = type(value).to_xml(value)
+        element.set(f"{{{self._w_ns}}}val", underline)
+        rpr.insert(self._placement(rpr, "u"), element)
 
     @property
     def size(self) -> Optional[int]:
@@ -1225,8 +1210,11 @@ class ColorFormat:
             if element is not None:
                 self._run._rpr().remove(element)
             return
+        xml_value = token(value)
+        if xml_value is None and hasattr(value, "xml_value"):
+            xml_value = type(value).to_xml(value)
         element = self._element(create=True)
-        element.set(f"{{{self._run._w_ns}}}themeColor", token(value))
+        element.set(f"{{{self._run._w_ns}}}themeColor", xml_value)
 
     @property
     def type(self):
@@ -1262,22 +1250,28 @@ class Font:
 
     @property
     def subscript(self) -> Optional[bool]:
-        return self._run.vert_align == "subscript"
+        value = self._run.vert_align
+        return None if value is None else value == "subscript"
 
     @subscript.setter
     def subscript(self, value) -> None:
-        if value:
+        if value is None:
+            self._run.vert_align = None
+        elif value:
             self._run.vert_align = "subscript"
         elif self._run.vert_align == "subscript":
             self._run.vert_align = None
 
     @property
     def superscript(self) -> Optional[bool]:
-        return self._run.vert_align == "superscript"
+        value = self._run.vert_align
+        return None if value is None else value == "superscript"
 
     @superscript.setter
     def superscript(self, value) -> None:
-        if value:
+        if value is None:
+            self._run.vert_align = None
+        elif value:
             self._run.vert_align = "superscript"
         elif self._run.vert_align == "superscript":
             self._run.vert_align = None
@@ -1316,6 +1310,8 @@ class Font:
     @highlight_color.setter
     def highlight_color(self, value) -> None:
         text = token(value)
+        if text is None and value is not None and hasattr(value, "xml_value"):
+            text = type(value).to_xml(value)
         rpr = self._run._rpr(create=text is not None)
         if rpr is None:
             return
@@ -1456,13 +1452,10 @@ class ParagraphFormat:
             return Length(int(value) * 635) if value else None
 
         def set_(self, value):
+            # ``w:left`` and ``w:hanging`` are independent OOXML values. A
+            # negative left indent is legal and assigning it must not clear a
+            # separately-set first-line/hanging indent.
             twips_value = None if value is None else twips(value)
-            if value is not None and value < 0 and attribute == "left":
-                # a negative left indent is Word's "hanging" indent
-                self._set_child(parent, "left", None)
-                self._set_child(parent, "hanging", str(-twips_value))
-                return
-            self._set_child(parent, "hanging", None)
             self._set_child(parent, attribute, twips_value)
 
         return property(get, set_)
@@ -1654,24 +1647,25 @@ class Row:
 
     @property
     def grid_cols_before(self) -> int:
-        """Grid columns this row's first cell is indented by (merged cells)."""
-        first = self._elements()
-        if not first:
+        """Count of unpopulated layout-grid cells before this row's first cell."""
+        props = self._trpr()
+        if props is None:
             return 0
-        return max(0, Cell(first[0], self._w_ns)._column_index())
+        for child in props:
+            if _local(child) == "gridBefore":
+                return int(child.get(f"{{{self._w_ns}}}val") or 0)
+        return 0
 
     @property
     def grid_cols_after(self) -> int:
-        """Grid columns to the right of this row's last cell."""
-        table = self._table
-        if table is None:
+        """Count of unpopulated layout-grid cells after this row's last cell."""
+        props = self._trpr()
+        if props is None:
             return 0
-        gridcols = 0
-        for child in table._element:
-            if _local(child) == "tblGrid":
-                gridcols = len([c for c in child if _local(c) == "gridCol"])
-        used = sum(cell.grid_span for cell in self.cells)
-        return max(0, gridcols - used)
+        for child in props:
+            if _local(child) == "gridAfter":
+                return int(child.get(f"{{{self._w_ns}}}val") or 0)
+        return 0
 
 
 class Cell:
@@ -1745,57 +1739,150 @@ class Cell:
 
     # ----------------------------------------------------------------- merging
     def merge(self, other: "Cell") -> "Cell":
-        """Merge this cell with another one; returns the surviving cell.
-
-        The top-left cell of the merged region survives, and the others' text is
-        appended to it in reading order — which is what python-docx does and
-        what Word shows.
-        """
-        if other._element is self._element:
-            return self
+        """Merge a rectangular region, rejecting cells from another table."""
+        if not isinstance(other, Cell):
+            raise TypeError("other must be a Cell")
         if self._table() is None or other._table() is not self._table():
             raise ValueError("cells can only be merged inside one table")
-        first, second = self, other
-        if second._row() is not first._row():
-            # vertical merge: the top cell restarts, the lower cells continue
-            rows = [element for element in first._table() if _local(element) == "tr"]
-            first_row = rows.index(first._row())
-            second_row = rows.index(second._row())
-            if second_row < first_row:
-                first, second = second, first
-                first_row, second_row = second_row, first_row
-            for row_element in rows[first_row:second_row + 1]:
-                cells = [element for element in row_element if _local(element) == "tc"]
-                target = cells[first._column_index()] if first._column_index() < len(cells) \
-                    else None
-                if target is None:
+        return self._merge(other)
+
+    def _merge(self, other: "Cell", *, allow_cross_table: bool = False) -> "Cell":
+        """Implementation shared with the python-docx compatibility proxy."""
+        from .exceptions import InvalidSpanError
+
+        if not isinstance(other, Cell):
+            raise TypeError("other must be a Cell")
+        table = self._table()
+        if table is None or other._table() is None:
+            raise InvalidSpanError("requested span not rectangular")
+        if other._table() is not table and not allow_cross_table:
+            raise ValueError("cells can only be merged inside one table")
+        rows = [element for element in table if _local(element) == "tr"]
+
+        def table_rows(table_element: ET.Element) -> list[ET.Element]:
+            return [element for element in table_element
+                    if _local(element) == "tr"]
+
+        def row_index(cell: "Cell") -> int:
+            cell_rows = table_rows(cell._table())
+            row = cell._row()
+            if row not in cell_rows:
+                raise InvalidSpanError("requested span not rectangular")
+            return cell_rows.index(row)
+
+        def cell_at(row_element: ET.Element, grid_offset: int,
+                    table_element: ET.Element) -> Optional["Cell"]:
+            row = Row(row_element, self._w_ns)
+            offset = row.grid_cols_before
+            for element in row_element:
+                if _local(element) != "tc":
                     continue
-                cell = Cell(target, first._w_ns)
-                if row_element is first._row():
-                    cell._set("vMerge", "restart")
-                else:
-                    cell._set("vMerge", "")
-                    if cell._element is not first._element:
-                        first._absorb(cell)
-            return first
-        # horizontal merge: leftmost survives, gridSpan grows
-        first_column = first._column_index()
-        second_column = second._column_index()
-        if second_column < first_column:
-            first, second = second, first
-            first_column, second_column = second_column, first_column
-        row_cells = [element for element in first._row() if _local(element) == "tc"]
-        span = 0
-        for offset in range(first_column, second_column + 1):
-            if offset >= len(row_cells):
-                break
-            cell = Cell(row_cells[offset], first._w_ns)
-            span += cell.grid_span
-            if cell._element is not first._element:
-                first._absorb(cell)
-                first._row().remove(cell._element)
-        first._set("gridSpan", str(span) if span > 1 else None)
-        return first
+                cell = Cell(element, self._w_ns)
+                cell._row_element = row_element
+                cell._table_element = table_element
+                if offset == grid_offset:
+                    return cell
+                offset += cell.grid_span
+            return None
+
+        def bounds(cell: "Cell") -> tuple[int, int, int, int]:
+            cell_table = cell._table()
+            cell_rows = table_rows(cell_table)
+            row_number = row_index(cell)
+            left = cell._column_index()
+            right = left + cell.grid_span
+            top, bottom = row_number, row_number + 1
+
+            if cell.vertical_merge == "continue":
+                for above_index in range(row_number - 1, -1, -1):
+                    above = cell_at(cell_rows[above_index], left, cell_table)
+                    if above is None or above._column_index() != left \
+                            or above.grid_span != cell.grid_span:
+                        break
+                    if above.vertical_merge == "restart":
+                        top = above_index
+                        break
+                    if above.vertical_merge != "continue":
+                        break
+            if cell.vertical_merge in ("restart", "continue"):
+                for below_index in range(row_number + 1, len(cell_rows)):
+                    below = cell_at(cell_rows[below_index], left, cell_table)
+                    if below is None or below._column_index() != left \
+                            or below.grid_span != cell.grid_span \
+                            or below.vertical_merge != "continue":
+                        break
+                    bottom = below_index + 1
+            return top, left, bottom, right
+
+        a_top, a_left, a_bottom, a_right = bounds(self)
+        b_top, b_left, b_bottom, b_right = bounds(other)
+        if a_top == b_top and a_bottom != b_bottom:
+            raise InvalidSpanError("requested span not rectangular")
+        if a_left == b_left and a_right != b_right:
+            raise InvalidSpanError("requested span not rectangular")
+
+        if a_top < b_top and a_bottom > b_bottom \
+                or b_top < a_top and b_bottom > a_bottom:
+            raise InvalidSpanError("requested span not rectangular")
+        if a_left < b_left and a_right > b_right \
+                or b_left < a_left and b_right > a_right:
+            raise InvalidSpanError("requested span not rectangular")
+
+        top = min(a_top, b_top)
+        left = min(a_left, b_left)
+        bottom = max(a_bottom, b_bottom)
+        right = max(a_right, b_right)
+        height, width = bottom - top, right - left
+        if height < 1 or width < 1:
+            raise InvalidSpanError("requested span not rectangular")
+
+        top_cell = cell_at(rows[top], left, table)
+        if top_cell is None:
+            raise InvalidSpanError("not enough grid columns")
+
+        # Grow one row at a time. This is the same order used by python-docx:
+        # each row's content is collected left-to-right, then rows top-to-bottom.
+        for row_number in range(top, bottom):
+            row_element = rows[row_number]
+            row_cell = cell_at(row_element, left, table)
+            if row_cell is None:
+                raise InvalidSpanError("not enough grid columns")
+            direct_cells = [element for element in row_element
+                            if _local(element) == "tc"]
+            try:
+                cell_index = direct_cells.index(row_cell._element)
+            except ValueError as exc:
+                raise InvalidSpanError("requested span not rectangular") from exc
+
+            row_span = row_cell.grid_span
+            if row_span > width:
+                raise InvalidSpanError("span is not rectangular")
+            if row_number != top:
+                row_cell._move_content_to(top_cell)
+            while row_span < width:
+                next_index = cell_index + 1
+                if next_index >= len(direct_cells):
+                    raise InvalidSpanError("not enough grid columns")
+                next_cell = Cell(direct_cells[next_index], self._w_ns)
+                next_cell._row_element = row_element
+                next_cell._table_element = table
+                if row_span + next_cell.grid_span > width:
+                    raise InvalidSpanError("span is not rectangular")
+
+                if next_cell.width and row_cell.width:
+                    row_cell.width = row_cell.width + next_cell.width
+                next_cell._move_content_to(top_cell)
+                row_element.remove(next_cell._element)
+                direct_cells.pop(next_index)
+                row_span += next_cell.grid_span
+
+            row_cell._set("gridSpan", str(width) if width > 1 else None)
+            row_cell._set("vMerge", "restart" if row_number == top and height > 1
+                          else "" if height > 1 else None)
+
+        top_cell._row_element = rows[top]
+        top_cell._table_element = table
+        return top_cell
 
     @property
     def width(self) -> Optional[int]:
@@ -1823,7 +1910,7 @@ class Cell:
         element = ET.Element(f"{{{self._w_ns}}}tcW")
         element.set(f"{{{self._w_ns}}}w", str(twips(value)))
         element.set(f"{{{self._w_ns}}}type", "dxa")
-        props.append(element)
+        props.insert(0, element)
 
     @property
     def vertical_alignment(self):
@@ -1865,9 +1952,10 @@ class Cell:
                   text=None) -> Table:
         """Put a table inside this cell."""
         builder = Builder({"w": self._w_ns})
+        widths = None if width is None else (
+            [int(width) // cols] * cols if cols else [])
         element = builder.table(rows, cols, style="TableGrid",
-                                widths=[twips(width)] * cols if width else None,
-                                text=text)
+                                widths=widths, text=text)
         self._element.append(element)
         return Table(element, self._w_ns)
 
@@ -1881,27 +1969,47 @@ class Cell:
                 yield Table(child, self._w_ns)
 
     def _absorb(self, other: "Cell") -> None:
-        """Move another cell's paragraphs into this one (keeping the text)."""
-        for paragraph in list(other._element):
-            if _local(paragraph) == "p":
-                other._element.remove(paragraph)
-                self._element.append(paragraph)
-            elif _local(paragraph) == "tcPr":
-                continue
+        """Move another cell's block content into this one."""
+        other._move_content_to(self)
+
+    def _move_content_to(self, other: "Cell") -> None:
+        """Append this cell's content to ``other`` and leave a valid empty cell."""
+        if self._element is other._element:
+            return
+        blocks = [child for child in self._element
+                  if _local(child) in ("p", "tbl")]
+        if len(blocks) == 1 and _local(blocks[0]) == "p" \
+                and not any(_local(child) == "r" for child in blocks[0]):
+            # python-docx treats a cell containing a single run-free paragraph
+            # as empty and leaves it in place instead of adding a blank line.
+            return
+
+        target_blocks = [child for child in other._element
+                         if _local(child) in ("p", "tbl")]
+        if target_blocks and _local(target_blocks[-1]) == "p" \
+                and not any(_local(child) == "r" for child in target_blocks[-1]):
+            other._element.remove(target_blocks[-1])
+
+        for block in blocks:
+            self._element.remove(block)
+            other._element.append(block)
+        # A table cell must retain at least one block-level paragraph, including
+        # when it becomes a vertical-merge continuation cell.
+        self._element.append(ET.Element(f"{{{self._w_ns}}}p"))
 
     def _column_index(self) -> int:
-        """Grid column of this cell, counting the spans of the cells before it."""
+        """Grid column of this cell, counting omitted and spanned cells."""
         row = self._row()
         if row is None:
             return 0
-        index = 0
+        index = Row(row, self._w_ns).grid_cols_before
         for child in row:
             if _local(child) != "tc":
                 continue
             if child is self._element:
                 return index
             index += Cell(child, self._w_ns).grid_span
-        return 0
+        return index
 
     def _merge_origin(self) -> Optional["Cell"]:
         """For a vertically merged cell: the restart cell holding the text.
@@ -1922,7 +2030,7 @@ class Cell:
             return None
         for above in reversed(rows[:index]):
             cells = [element for element in above if _local(element) == "tc"]
-            offset = 0
+            offset = Row(above, self._w_ns).grid_cols_before
             found = None
             for element in cells:
                 if offset == column:
@@ -1932,6 +2040,8 @@ class Cell:
             if found is None:
                 continue
             cell = Cell(found, self._w_ns)
+            cell._row_element = above
+            cell._table_element = table
             if cell.vertical_merge == "restart":
                 return cell
             if cell.vertical_merge != "continue":
@@ -2076,12 +2186,10 @@ class Table:
         self._set_prop("jc", "val", token(value))
 
     @property
-    def autofit(self) -> Optional[bool]:
-        """True when the table is laid out by content (``w:tblLayout``)."""
+    def autofit(self) -> bool:
+        """True unless the table explicitly declares fixed-width layout."""
         layout = self._prop("tblLayout", "type")
-        if layout is None:
-            return None
-        return layout == "autofit"
+        return True if layout is None else layout != "fixed"
 
     @autofit.setter
     def autofit(self, value) -> None:

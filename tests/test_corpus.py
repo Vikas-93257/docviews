@@ -73,7 +73,9 @@ def test_the_impossible_text_is_gone(corpus_path):
 def test_tree_and_stream_agree(corpus_path):
     """The bounded-memory path is not a different reader."""
     import random
-    files = corpus_files(corpus_path)
+    # pathlib path ordering is case-sensitive on POSIX and case-insensitive on
+    # Windows; normalize explicitly so every platform samples the same files.
+    files = sorted(corpus_files(corpus_path), key=lambda path: path.name.casefold())
     random.Random(0).shuffle(files)
     checked = 0
     for f in files[:40]:
