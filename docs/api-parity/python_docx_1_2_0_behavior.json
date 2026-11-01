@@ -4892,7 +4892,7 @@
       "reason": "Full suite after transferring the stream-order fix and Windows-portable test/example updates."
     },
     "reference": "Pinned python-docx 1.2.0 source at research/python-docx-v1.2.0; PYTHONPATH included the pinned source, docviews src, and tests.",
-    "conclusion": "The pre-fix advertised Python 3.9–3.15 matrix passed locally; post-fix CPython 3.13.16 on Linux and CPython 3.14 on Windows passed. Final hosted CI must confirm all seven versions before publication.",
+    "conclusion": "The post-fix CPython 3.13.16 Linux and CPython 3.14 Windows suites passed; hosted CI confirmed all seven Python versions on the v1.0.0 tag. The 1.0.0 release was published on 2026-11-01 through GitHub Actions Trusted Publishing.",
     "post_metadata_retest": {
       "python": "3.15.2",
       "date": "2026-11-01",
@@ -4917,7 +4917,7 @@
   "distribution_validation": {
     "status": "passed",
     "version": "1.0.0",
-    "release_status": "Stable metadata selected; artifacts are local and unpublished. No PyPI upload was made or authorized.",
+    "release_status": "Published to PyPI as 1.0.0 on 2026-11-01 from commit 10f6da4 via GitHub Actions Trusted Publishing; the PyPI description is the metadata captured at upload time.",
     "python": "3.13.16",
     "build": "python -m build --sdist --wheel; isolated setuptools build backend",
     "artifacts": {

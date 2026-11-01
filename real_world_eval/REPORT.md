@@ -1,14 +1,16 @@
 # Initial public real-world DOCX smoke evaluation
 
-**Run date:** 2026-10-29  
-**Purpose:** test package opening and unchanged-save preservation on documents not sourced from software test suites.  
+**Run date:** 2026-10-29
+
+**Purpose:** test package opening and unchanged-save preservation on documents not sourced from software test suites.
+
 **Status:** exploratory smoke evaluation; not a representative corpus or a fidelity gold-standard.
 
 ## Result
 
 Eight DOCX files were downloaded from their publishers' official GOV.UK asset URLs. The four GOV.UK source pages' standard footer says all content is available under the Open Government Licence v3.0, except where otherwise stated; no contrary document-specific reuse terms were found on these pages. The licence still has exclusions, including third-party rights. The manifest links to the source pages, GOV.UK terms, and the OGL itself, and records each direct URL, HTTP response, file size, and SHA-256.
 
-The `docviews 0.3.0` table label is the package version reported on the 2026-10-29 run date. It is historical metadata. Stable version `1.0.0` was selected on 2026-11-01 after documented-public-API parity was verified; the distribution remains unpublished.
+The `docviews 0.3.0` table label is the package version reported on the 2026-10-29 run date and is historical metadata. Stable version `1.0.0` was published on PyPI on 2026-11-01 after documented-public-API parity was verified. This evaluation's package label remains `0.3.0` and does not describe the published version.
 
 | Measure | docviews 0.3.0 | python-docx 1.2.0 |
 |---|---:|---:|

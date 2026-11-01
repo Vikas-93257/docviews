@@ -10,9 +10,9 @@ in-scope rows, and 6 structural/internal scope exclusions**. All 471 runtime
 enum members match; the documented-only `MSO_THEME_COLOR_INDEX.MIXED` is
 implemented with the published value `-2`. The full 239-test suite passed on
 each tested CPython patch release from 3.9.25 through 3.15.2. See
-[`API_PARITY_MATRIX.md`](API_PARITY_MATRIX.md) for scope and evidence. Stable
-release metadata **1.0.0** is selected, but no package has been uploaded; PyPI
-publication still requires explicit maintainer approval.
+[`API_PARITY_MATRIX.md`](API_PARITY_MATRIX.md) for scope and evidence. The
+stable release **1.0.0** is published on PyPI. Install it with
+`python -m pip install docviews`.
 
 ```python
 from docviews import open_docx
@@ -91,7 +91,7 @@ Many Python document pipelines rely on `python-docx` (95.4M downloads/month in a
 
 And saving through it silently rewrites the package — measured by opening all 832 documents, saving each one **unchanged**, and diffing the two packages:
 
-| open → save, unchanged | python-docx 1.2.0 | docviews 1.0.0 metadata (local, unpublished) |
+| open → save, unchanged | python-docx 1.2.0 | docviews 1.0.0 (published 2026-11-01) |
 |---|---:|---:|
 | documents opened | 762 / 832 | **831 / 832** |
 | documents that come back with the **same package entries** | 523 | **831** |
@@ -114,17 +114,14 @@ docviews    : the two readings above
 
 ## Install
 
-Stable-release metadata `1.0.0` has been selected, but the distribution is
-not yet published. For the current local source checkout, install directly from
-the project root:
+The stable release is available on PyPI. Install the latest version with:
 
 ```console
-python -m pip install .
+python -m pip install docviews
 ```
 
-The runtime package has no dependencies and the documented-API test suite is
-verified on CPython 3.9–3.15. Do not expect `pip install docviews==1.0.0` to
-work until the maintainer explicitly authorizes and completes publication.
+The runtime package has no dependencies, and the documented-API test suite is
+verified on CPython 3.9–3.15. The published stable package version is `1.0.0`.
 
 ## Reading
 
@@ -332,9 +329,9 @@ migrating an existing codebase (**8.45 vs 7.45**); docviews leads for a new
 document pipeline (**8.70 vs 6.95**) and for reading/auditing (**8.85 vs 6.65**).
 Those ecosystem scores do not substitute for the separate API matrix.
 
-| measurement | python-docx 1.2.0 | docviews 1.0.0 metadata (unpublished) |
+| measurement | python-docx 1.2.0 | docviews 1.0.0 (published 2026-11-01) |
 |---|---|---|
-| downloads / month | 95.4M (checked 2026-10-14) | no published distribution; stable metadata selected 2026-11-01 |
+| downloads / month | 95.4M (checked 2026-10-14) | published 2026-11-01; adoption data is not yet meaningful |
 | documented API parity | baseline | 578 in-scope behavior matches; 0 partial/not-assessed; 6 structural/internal scope exclusions; details in `API_PARITY_MATRIX.md` |
 | bounded compatibility audit | baseline | 276/276 sampled object names, 78/78 sampled callable parameter shapes, 471/471 runtime enum members |
 | unchanged open → save | 762 / 832 open; 7 keep every part | 831 / 832 open; 13,912 / 13,912 parts byte-identical |

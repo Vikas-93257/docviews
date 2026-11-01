@@ -1,12 +1,15 @@
 # Changelog
 
-## 1.0.0 — Stable release metadata selected (2026-11-01; not published)
+## Repository documentation correction (2026-11-01)
 
-The first stable version is selected after completing the documented-public-API
-parity assessment against python-docx 1.2.0. The package metadata now uses
-version `1.0.0` and the `Production/Stable` classifier. This is a local release
-candidate only: no PyPI upload has been made, and publication requires explicit
-maintainer approval.
+The GitHub documentation now reflects that docviews 1.0.0 is published and
+installable from PyPI. This repository-only correction does not alter the
+already-uploaded 1.0.0 distributions or their PyPI description.
+
+## 1.0.0 — Initial stable release (published 2026-11-01)
+
+The first stable version was published to PyPI through protected Trusted
+Publishing from GitHub Actions on commit `10f6da4`.
 
 - The source-backed API matrix contains **584 documented records**: **578
   in-scope behavior matches**, **0 partial or unassessed in-scope records**, and
@@ -22,17 +25,16 @@ maintainer approval.
 - The twelve selected python-docx documentation recipes produce matching
   save-and-reopen transcripts.
 - The Sphinx 9.2.0 reference-docs build succeeded with one explicitly accepted
-  upstream docutils warning at `research/python-docx-v1.2.0/docs/user/comments.rst:134`.
-  The pinned upstream source was not changed.
-- The wheel and source distribution were rebuilt after the metadata change,
-  passed strict Twine checks, installed in clean Python 3.15.2 environments,
-  and passed DOCX create/save/reopen and CLI smoke tests. Local artifacts and
-  checksums are in `release_artifacts/1.0.0/`.
+  upstream docutils warning at
+  `research/python-docx-v1.2.0/docs/user/comments.rst:134`. The pinned upstream
+  source was not changed.
+- The wheel and source distribution passed strict Twine checks, clean installs,
+  DOCX round-trip checks, and CLI smoke tests. Original 1.0.0 validation
+  artifacts and checksums remain in `release_artifacts/1.0.0/`.
 
 The parity claim is limited to the documented public API of python-docx 1.2.0.
 Undocumented lxml/OOXML/OPC internals and malformed states outside the
-published contract remain out of scope. No PyPI upload is authorized by this
-readiness work.
+published contract remain out of scope.
 
 ---
 
@@ -40,5 +42,5 @@ readiness work.
 
 `0.3.0a1` was an internal checkpoint used before the documented-public-API
 parity work was complete. It was never published and is superseded by the
-`1.0.0` stable metadata selection. Its temporary local archives were removed
-after the final stable artifacts were validated.
+`1.0.0` stable release. Its temporary local archives were removed after the
+final stable artifacts were validated.

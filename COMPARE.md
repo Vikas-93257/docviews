@@ -4,16 +4,16 @@
 from the 832-file fixture corpus and were produced by scripts in this repository;
 each script is named next to its measurement. The support/adoption scorecard
 remains a 2026-10-31 snapshot. Documented-API parity and stable version metadata
-were updated on 2026-11-01; the selected 1.0.0 distribution remains unpublished.
+were updated on 2026-11-01; stable version 1.0.0 was published on PyPI that day.
 An external public-DOCX smoke set was added on 2026-10-29 (§10). Where a number
 favours python-docx, it is the first one in the row.*
 
 ## The short version
 
-| | python-docx 1.2.0 | docviews 1.0.0 metadata (unpublished) |
+| | python-docx 1.2.0 | docviews 1.0.0 (published 2026-11-01) |
 |---|---|---|
 | What it is | the standard Python `.docx` library, 10 years old | a read-fidelity OOXML library that also writes, with a compat door for python-docx code |
-| Downloads | **95.4M / month** (2026-10-14) | 1.0.0 metadata selected; distribution remains unpublished |
+| Downloads | **95.4M / month** (2026-10-14) | published 2026-11-01; adoption data is not yet meaningful |
 | Licence | MIT | MIT |
 | API coverage | — | **578 tested documented behaviors**, 0 partial/not-assessed in-scope entries, 6 internal/scope exclusions; the separate sample audit records 276/276 names, 78/78 call shapes, and 471/471 runtime enum members |
 | Open → save unchanged (fixture corpus) | 762 / 832 files open; **7** keep every part | **831 / 832** open; **13,912 / 13,912 parts byte-identical** |
@@ -256,7 +256,7 @@ you that can normalise, reorder or rename something.
 | | python-docx | docviews |
 |---|---|---|
 | first release | 2013 | 2026 (v0.1) |
-| latest | 1.2.0, 2025-06-16 | 1.0.0 stable metadata selected 2026-11-01; unpublished |
+| latest | 1.2.0, 2025-06-16 | 1.0.0, published 2026-11-01 |
 | use in the wild | 95.4M downloads/month | no public user base recorded at that snapshot |
 | documentation | book-length, plus a decade of Q&A | README, compatibility and migration guides, contributor guide, census, and comparison; source is public, and two hosted CI runs passed |
 | test suite here | — | 239 tests, corpus-backed; full suite passed on CPython 3.9–3.15 |
@@ -315,7 +315,7 @@ under the table.
 | authoring breadth | **9** | 8 | both author paragraphs→styles→tables→sections→images; python-docx still has more mature edge-case coverage and a larger regression history |
 | speed | 8 | **9** | 2026-10-31 build+save microbenchmark: docviews 0.031 vs 0.142 s (500 paragraphs) and 0.438 vs 0.571 s (5,000), with python-docx faster at saving alone |
 | dependencies / footprint | 6 | **10** | lxml + typing_extensions + 12 MB vs none; 252,987 B vs about 144 KiB per wheel |
-| maturity / ecosystem | **10** | 3 | 95.4M downloads/month since 2013 vs stable 1.0.0 metadata that remains unpublished; the repo and issue tracker are new and no adoption data is recorded at the 2026-10-31 recheck |
+| maturity / ecosystem | **10** | 3 | 95.4M downloads/month since 2013 vs a 1.0.0 release published on 2026-11-01; the repo and issue tracker are new and no adoption data was recorded at the 2026-10-31 recheck |
 | documentation / support | **9** | 6 | python-docx has a book-length manual and established Q&A; docviews has migration/contributor guides and measured compatibility docs, but its public issue tracker is new and has no support history or SLA |
 | verification / tests | 6 | **9** | 239 tests passed on each tested CPython 3.9–3.15 patch release (seven versions), plus an 8-file public-DOCX round-trip smoke set; no independent rendered-text gold set |
 | openness (Strict, plain XML, streaming) | 6 | **9** | ISO-Strict opens here and is refused there; no C XML layer; `iterparse` streaming |
@@ -355,10 +355,9 @@ claim.
    parameter shapes are still a selected sample; special methods, import paths,
    and behavior across all documented objects/states are not fully audited.
    Close that evidence gap before raising the API score above 8.
-2. **Publish it, then earn adoption.** A verified maintainer identity, explicit
-   version choice, authorized release, public source/issue tracker, and external
-   CI are prerequisites. They could justify moving `maturity` above 3, but a
-   PyPI listing alone would not establish a strong ecosystem; raise the score
+2. **Earn adoption over time.** The verified maintainer, stable PyPI release,
+   public source and issue tracker, and hosted CI are now in place. These are
+   prerequisites, not evidence of an established ecosystem; raise the score
    only after sustained external use, issue traffic, and releases.
 3. **Scale and diversity of the real-world corpus.** The 8 public DOCX files in
    `real_world_eval/` add external package-preservation evidence, but all come
@@ -382,8 +381,8 @@ there. The documented-public-API matrix is now complete within the agreed
 boundary: 578 in-scope behaviors match and six structural/internal records are
 excluded. This establishes API-contract parity with python-docx 1.2.0, not
 adoption, an SLA, undocumented internals, or behavior outside the documented
-contract. Stable `1.0.0` metadata is selected but unpublished; broader
-independent validation and an established user base remain separate concerns.
+contract. Stable `1.0.0` was published on 2026-11-01; broader independent
+validation and an established user base remain separate concerns.
 
 ---
 
@@ -402,8 +401,8 @@ terms URLs, direct download URL, HTTP response, size, and SHA-256 are in the CSV
 and JSON manifests.
 
 The 2026-10-29 run's `docviews 0.3.0` label records the version reported by
-that run; it is historical metadata. Stable version `1.0.0` was selected on
-2026-11-01 after documented-API parity was verified; it remains unpublished.
+that run; it is historical metadata. Stable version `1.0.0` was published on
+2026-11-01 after documented-API parity was verified.
 
 | unchanged open → save | docviews 0.3.0 | python-docx 1.2.0 |
 |---|---:|---:|

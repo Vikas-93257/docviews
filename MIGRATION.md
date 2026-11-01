@@ -5,8 +5,8 @@ the agreed boundary; the source-backed parity matrix records 578 tested
 behavior matches and six structural/internal scope exclusions. It is not a
 top-level `docx` package: redirect imports to `docviews.compat`, and code that
 depends on undocumented lxml/OOXML/OPC internals remains out of scope. Stable
-release metadata `1.0.0` is selected but has not been published. Read this guide
-and test your application-specific workflows before switching production use.
+release `1.0.0` is available on PyPI. Read this guide and test your
+application-specific workflows before switching production use.
 
 ## Import changes
 
@@ -94,12 +94,10 @@ support.
 
 ## Release and support status
 
-Stable version `1.0.0` and the `Production/Stable` classifier are selected after
-completion of the documented-public-API parity assessment. The version has not
-been uploaded to PyPI; release artifacts are local and publication requires
-explicit maintainer approval. The repository URL is
+Stable version `1.0.0` with the `Production/Stable` classifier was published to
+PyPI on 2026-11-01. The repository URL is
 [github.com/Vikas-93257/docviews](https://github.com/Vikas-93257/docviews), and
 the [issue tracker](https://github.com/Vikas-93257/docviews/issues) is the
 public support channel. No production SLA or commercial support commitment is
-made. See `RELEASE_READINESS.md` for the remaining release approval steps and
-artifact checksums.
+made. See `CHANGELOG.md` and `RELEASE_READINESS.md` for release history and
+validation evidence.
